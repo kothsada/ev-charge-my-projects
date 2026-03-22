@@ -1,0 +1,83 @@
+# ─── Secrets & Credentials ──────────────────────────────────────────────────
+# Private/public key files (RSA, service JWTs)
+keys/
+**/keys/
+*.pem
+*.pub
+
+# Environment variables
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Kubernetes secret creation scripts (contain credentials)
+create-secret.sh
+**/create-secret.sh
+
+# GCP/K8s credential notes
+kubectl-gcp-create-secret-env.txt
+*.secret.txt
+*.credentials.txt
+
+# ─── Generated / Build Output ────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+dist/
+**/dist/
+build/
+**/build/
+
+# Prisma generated client
+generated/
+**/generated/
+
+# Test coverage
+coverage/
+**/coverage/
+.nyc_output
+**/.nyc_output
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── OS Files ────────────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# ─── IDE / Editor ────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-workspace
+*.sublime-project
+.c9/
+
+# ─── Personal / Export Files ─────────────────────────────────────────────────
+chat-export/
+chat-history/
+*.txt
+# ↑ Ignore .txt export/notes — re-allow specific ones below if needed:
+!README.txt
+
+# ─── Temp ────────────────────────────────────────────────────────────────────
+.temp/
+.tmp/
+*.tmp
+*.pid
+*.seed
+*.pid.lock
+pids/
+
+# ─── Runtime ─────────────────────────────────────────────────────────────────
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
