@@ -1,0 +1,210 @@
+// ============================================================
+// Panda EV Hub Platform — Notification Microservice
+// Database: panda-ev-noti-db
+// ============================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["panda_ev_notifications"]
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum NotificationChannel {
+  FCM
+  WEBSOCKET
+  BOTH
+
+  @@schema("panda_ev_notifications")
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  CLICKED
+  FAILED
+  SUPPRESSED
+
+  @@schema("panda_ev_notifications")
+}
+
+enum NotificationPriority {
+  HIGH
+  NORMAL
+  LOW
+
+  @@schema("panda_ev_notifications")
+}
+
+// ============================================================
+// NOTIFICATION TEMPLATES
+// ============================================================
+
+/// Reusable notification templates with i18n title/body per language
+model NotificationTemplate {
+  id            String               @id @default(uuid()) @db.Uuid
+  slug          String               @unique @db.VarChar(100)
+  channel       NotificationChannel
+  priority      NotificationPriority @default(NORMAL)
+  titleLo       String               @map("title_lo") @db.VarChar(255)
+  titleEn       String               @map("title_en") @db.VarChar(255)
+  titleZh       String               @map("title_zh") @db.VarChar(255)
+  bodyLo        String               @map("body_lo") @db.Text
+  bodyEn        String               @map("body_en") @db.Text
+  bodyZh        String               @map("body_zh") @db.Text
+  imageUrl      String?              @map("image_url") @db.VarChar(1000)
+  deepLinkPath  String?              @map("deep_link_path") @db.VarChar(500)
+  actionButtons Json?                @map("action_buttons")
+  isActive      Boolean              @default(true) @map("is_active")
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  logs NotificationLog[]
+
+  @@map("notification_templates")
+  @@schema("panda_ev_notifications")
+}
+
+// ============================================================
+// NOTIFICATION LOGS
+// ============================================================
+
+/// Delivery record for every push notification sent through the pipeline
+model NotificationLog {
+  id              String               @id @default(uuid()) @db.Uuid
+  templateId      String?              @map("template_id") @db.Uuid
+  userId          String               @db.VarChar(150)
+  sessionId       String?              @map("session_id") @db.VarChar(150)
+  chargerIdentity String?              @map("charger_identity") @db.VarChar(100)
+  stationId       String?              @map("station_id") @db.VarChar(150)
+  channel         NotificationChannel
+  type            String               @db.VarChar(100)
+  priority        NotificationPriority @default(NORMAL)
+  title           String               @db.VarChar(255)
+  body            String               @db.VarChar(1000)
+  payload         Json?
+  status          NotificationStatus   @default(PENDING)
+  fcmMessageId    String?              @map("fcm_message_id") @db.VarChar(500)
+  errorMessage    String?              @map("error_message") @db.Text
+  retryCount      Int                  @default(0) @map("retry_count")
+  sentAt          DateTime             @default(now()) @map("sent_at") @db.Timestamptz(6)
+  deliveredAt     DateTime?            @map("delivered_at") @db.Timestamptz(6)
+  readAt          DateTime?            @map("read_at") @db.Timestamptz(6)
+  clickedAt       DateTime?            @map("clicked_at") @db.Timestamptz(6)
+
+  template NotificationTemplate? @relation(fields: [templateId], references: [id])
+
+  @@unique([sessionId, type])
+  @@index([userId, sentAt])
+  @@index([stationId, sentAt])
+  @@index([status, sentAt])
+  @@index([chargerIdentity, sentAt])
+  @@map("notification_logs")
+  @@schema("panda_ev_notifications")
+}
+
+// ============================================================
+// USER PREFERENCES
+// ============================================================
+
+/// Per-user FCM token registry and notification opt-in settings
+model UserNotificationPreference {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @map("user_id") @db.VarChar(150)
+  fcmTokens       String[] @default([]) @map("fcm_tokens")
+  apnsTokens      String[] @default([]) @map("apns_tokens")
+  devicePlatforms String[] @default([]) @map("device_platforms")
+  language        String   @default("lo") @db.VarChar(10)
+  batteryAlerts   Boolean  @default(true) @map("battery_alerts")
+  sessionAlerts   Boolean  @default(true) @map("session_alerts")
+  overstayAlerts  Boolean  @default(true) @map("overstay_alerts")
+  promoAlerts     Boolean  @default(false) @map("promo_alerts")
+  quietHoursStart Int?     @map("quiet_hours_start") @db.Integer
+  quietHoursEnd   Int?     @map("quiet_hours_end") @db.Integer
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_notification_preferences")
+  @@schema("panda_ev_notifications")
+}
+
+// ============================================================
+// AGGREGATED STATISTICS
+// ============================================================
+
+/// Pre-aggregated per-station session and revenue metrics, bucketed by hour
+model StationHourlyStat {
+  id                String   @id @default(uuid()) @db.Uuid
+  stationId         String   @map("station_id") @db.VarChar(150)
+  stationName       String   @map("station_name") @db.VarChar(255)
+  hour              DateTime @db.Timestamptz(6)
+  sessionsStarted   Int      @default(0) @map("sessions_started")
+  sessionsCompleted Int      @default(0) @map("sessions_completed")
+  sessionsFailed    Int      @default(0) @map("sessions_failed")
+  activeSessions    Int      @default(0) @map("active_sessions")
+  totalEnergyKwh    Decimal  @default(0) @map("total_energy_kwh") @db.Decimal(12, 3)
+  totalRevenueLak   BigInt   @default(0) @map("total_revenue_lak")
+  totalOverstayLak  BigInt   @default(0) @map("total_overstay_lak")
+  overstayIncidents Int      @default(0) @map("overstay_incidents")
+  notificationsSent Int      @default(0) @map("notifications_sent")
+
+  @@unique([stationId, hour])
+  @@index([hour(sort: Desc)])
+  @@map("station_hourly_stats")
+  @@schema("panda_ev_notifications")
+}
+
+/// Pre-aggregated per-station session and revenue metrics, bucketed by calendar date
+model StationDailyStat {
+  id                     String   @id @default(uuid()) @db.Uuid
+  stationId              String   @map("station_id") @db.VarChar(150)
+  stationName            String   @map("station_name") @db.VarChar(255)
+  date                   DateTime @db.Date
+  totalSessions          Int      @default(0) @map("total_sessions")
+  completedSessions      Int      @default(0) @map("completed_sessions")
+  failedSessions         Int      @default(0) @map("failed_sessions")
+  totalEnergyKwh         Decimal  @default(0) @map("total_energy_kwh") @db.Decimal(12, 3)
+  totalRevenueLak        BigInt   @default(0) @map("total_revenue_lak")
+  avgSessionMinutes      Decimal  @default(0) @map("avg_session_minutes") @db.Decimal(8, 2)
+  peakConcurrentSessions Int      @default(0) @map("peak_concurrent_sessions")
+  totalOverstayLak       BigInt   @default(0) @map("total_overstay_lak")
+  overstayIncidents      Int      @default(0) @map("overstay_incidents")
+  avgOverstayMinutes     Decimal  @default(0) @map("avg_overstay_minutes") @db.Decimal(8, 2)
+  uniqueUsers            Int      @default(0) @map("unique_users")
+  notificationsSent      Int      @default(0) @map("notifications_sent")
+  notificationsFailed    Int      @default(0) @map("notifications_failed")
+
+  @@unique([stationId, date])
+  @@index([date(sort: Desc)])
+  @@map("station_daily_stats")
+  @@schema("panda_ev_notifications")
+}
+
+/// Pre-aggregated notification delivery metrics per type+channel per day
+model NotificationDailyStat {
+  id              String              @id @default(uuid()) @db.Uuid
+  date            DateTime            @db.Date
+  type            String              @db.VarChar(100)
+  channel         NotificationChannel
+  totalSent       Int                 @default(0) @map("total_sent")
+  totalDelivered  Int                 @default(0) @map("total_delivered")
+  totalRead       Int                 @default(0) @map("total_read")
+  totalClicked    Int                 @default(0) @map("total_clicked")
+  totalFailed     Int                 @default(0) @map("total_failed")
+  totalRetried    Int                 @default(0) @map("total_retried")
+  totalSuppressed Int                 @default(0) @map("total_suppressed")
+
+  @@unique([date, type, channel])
+  @@index([date(sort: Desc)])
+  @@map("notification_daily_stats")
+  @@schema("panda_ev_notifications")
+}

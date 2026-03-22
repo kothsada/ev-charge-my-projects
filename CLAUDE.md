@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Structure
 
-This monorepo contains 4 services for a Panda EV (electric vehicle) charging platform. Each service has its own `CLAUDE.md` with service-specific guidance.
+This monorepo contains 5 services for a Panda EV (electric vehicle) charging platform. Each service has its own `CLAUDE.md` with service-specific guidance.
 
 | Service | Port | Purpose |
 |---------|------|---------|
 | `panda-ev-ocpp/` | 4002 | OCPP 1.6J CSMS — WebSocket server handling charger protocol |
 | `panda-ev-csms-system-admin/` | 3001 | Admin backend — IAM, stations, pricing, CMS |
 | `panda-ev-client-mobile/` | 4001 | Mobile app backend — auth, wallet, charging sessions |
+| `panda-ev-notification/` | 5001 | Notification microservice — FCM push, stats aggregation, admin WS dashboard |
 | `ocpp-virtual-charge-point/` | N/A | OCPP simulator for testing (1.6, 2.0.1, 2.1) |
 
 ## Commands
@@ -92,7 +93,9 @@ All RabbitMQ messages are signed with RS256 `x-service-token` headers. Consumers
 | Queue | Direction | Payload |
 |---|---|---|
 | `PANDA_EV_CSMS_COMMANDS` | Mobile → OCPP | `{ routingKey: 'session.start'\|'session.stop', sessionId, identity, connectorId, mobileUserId }` |
-| `PANDA_EV_QUEUE` | OCPP → Mobile | `transaction.started`, `transaction.stopped`, `charger.booted`, `connector.status_changed` |
+| `PANDA_EV_QUEUE` | OCPP → Mobile + Notification | `transaction.started`, `transaction.stopped`, `charger.booted`, `connector.status_changed` |
+| `PANDA_EV_NOTIFICATIONS` | Mobile/Admin → Notification | `{ routingKey: 'notification.targeted'\|'notification.session'\|'notification.broadcast'\|'notification.overstay_reminder', fcmTokens[], userId, type, title, body, … }` |
+| `PANDA_EV_NOTIFICATIONS_DLQ` | Notification (dead-letter) | Failed messages after 3 retries (5s/30s/120s backoff) |
 | `PANDA_EV_USER_EVENTS` | Mobile → Admin | user registration events (admin mirrors user profiles) |
 | `PANDA_EV_SYSTEM_EVENTS` | Admin → Mobile | `{ routingKey: 'content.invalidate', slug }` for Redis cache invalidation |
 | `message.created` | Chat → Admin | consumed by Admin notification module for push notifications |

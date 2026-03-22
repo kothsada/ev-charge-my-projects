@@ -5,16 +5,18 @@
 # Generates RS256 key pairs (2048-bit) and stores each service's
 # private + public key inside THAT SERVICE'S OWN  keys/  directory:
 #
-#   panda-ev-csms-system-admin/keys/admin.pem   admin.pub
-#   panda-ev-client-mobile/keys/mobile.pem      mobile.pub
-#   panda-ev-ocpp/keys/ocpp.pem                 ocpp.pub
+#   panda-ev-csms-system-admin/keys/admin.pem        admin.pub
+#   panda-ev-client-mobile/keys/mobile.pem           mobile.pub
+#   panda-ev-ocpp/keys/ocpp.pem                      ocpp.pub
+#   panda-ev-notification/keys/notification.pem      notification.pub
 #
 # After generation the public keys are cross-copied so that
 # TRUSTED_SERVICE_PUBLIC_KEYS_DIR (Option A) works without manual steps:
 #
-#   admin/keys/ also contains: mobile.pub  ocpp.pub
-#   mobile/keys/ also contains: admin.pub  ocpp.pub
-#   ocpp/keys/ also contains:  admin.pub  mobile.pub
+#   admin/keys/        also contains: mobile.pub  ocpp.pub  notification.pub
+#   mobile/keys/       also contains: admin.pub   ocpp.pub  notification.pub
+#   ocpp/keys/         also contains: admin.pub   mobile.pub
+#   notification/keys/ also contains: admin.pub   mobile.pub
 #
 # Existing key files are NOT overwritten — delete a service's
 # keys/ directory to force regeneration.
@@ -37,13 +39,14 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 # Returns the service directory for a given short name
 service_dir() {
   case "$1" in
-    admin)  echo "$ROOT/panda-ev-csms-system-admin" ;;
-    mobile) echo "$ROOT/panda-ev-client-mobile" ;;
-    ocpp)   echo "$ROOT/panda-ev-ocpp" ;;
+    admin)        echo "$ROOT/panda-ev-csms-system-admin" ;;
+    mobile)       echo "$ROOT/panda-ev-client-mobile" ;;
+    ocpp)         echo "$ROOT/panda-ev-ocpp" ;;
+    notification) echo "$ROOT/panda-ev-notification" ;;
   esac
 }
 
-SERVICES="admin mobile ocpp"
+SERVICES="admin mobile ocpp notification"
 
 # ── Step 1: Generate keys (skip if already present) ──────────────────────────
 
@@ -101,33 +104,51 @@ echo "Cross-copying public keys for Option A (TRUSTED_SERVICE_PUBLIC_KEYS_DIR)..
 ADMIN_KEYS="$(service_dir "admin")/keys"
 MOBILE_KEYS="$(service_dir "mobile")/keys"
 OCPP_KEYS="$(service_dir "ocpp")/keys"
+NOTIF_KEYS="$(service_dir "notification")/keys"
 
-# admin/keys/ needs: mobile.pub  ocpp.pub
+# admin/keys/ needs: mobile.pub  ocpp.pub  notification.pub
 cp -n "$MOBILE_KEYS/mobile.pub" "$ADMIN_KEYS/mobile.pub" 2>/dev/null \
-  && echo "  Copied mobile.pub → admin/keys/" \
+  && echo "  Copied mobile.pub       → admin/keys/" \
   || echo "  admin/keys/mobile.pub already present — skipping"
 
 cp -n "$OCPP_KEYS/ocpp.pub" "$ADMIN_KEYS/ocpp.pub" 2>/dev/null \
-  && echo "  Copied ocpp.pub   → admin/keys/" \
+  && echo "  Copied ocpp.pub         → admin/keys/" \
   || echo "  admin/keys/ocpp.pub already present — skipping"
 
-# mobile/keys/ needs: admin.pub  ocpp.pub
+cp -n "$NOTIF_KEYS/notification.pub" "$ADMIN_KEYS/notification.pub" 2>/dev/null \
+  && echo "  Copied notification.pub → admin/keys/" \
+  || echo "  admin/keys/notification.pub already present — skipping"
+
+# mobile/keys/ needs: admin.pub  ocpp.pub  notification.pub
 cp -n "$ADMIN_KEYS/admin.pub" "$MOBILE_KEYS/admin.pub" 2>/dev/null \
-  && echo "  Copied admin.pub  → mobile/keys/" \
+  && echo "  Copied admin.pub        → mobile/keys/" \
   || echo "  mobile/keys/admin.pub already present — skipping"
 
 cp -n "$OCPP_KEYS/ocpp.pub" "$MOBILE_KEYS/ocpp.pub" 2>/dev/null \
-  && echo "  Copied ocpp.pub   → mobile/keys/" \
+  && echo "  Copied ocpp.pub         → mobile/keys/" \
   || echo "  mobile/keys/ocpp.pub already present — skipping"
+
+cp -n "$NOTIF_KEYS/notification.pub" "$MOBILE_KEYS/notification.pub" 2>/dev/null \
+  && echo "  Copied notification.pub → mobile/keys/" \
+  || echo "  mobile/keys/notification.pub already present — skipping"
 
 # ocpp/keys/ needs: admin.pub  mobile.pub
 cp -n "$ADMIN_KEYS/admin.pub" "$OCPP_KEYS/admin.pub" 2>/dev/null \
-  && echo "  Copied admin.pub  → ocpp/keys/" \
+  && echo "  Copied admin.pub        → ocpp/keys/" \
   || echo "  ocpp/keys/admin.pub already present — skipping"
 
 cp -n "$MOBILE_KEYS/mobile.pub" "$OCPP_KEYS/mobile.pub" 2>/dev/null \
-  && echo "  Copied mobile.pub → ocpp/keys/" \
+  && echo "  Copied mobile.pub       → ocpp/keys/" \
   || echo "  ocpp/keys/mobile.pub already present — skipping"
+
+# notification/keys/ needs: admin.pub  mobile.pub
+cp -n "$ADMIN_KEYS/admin.pub" "$NOTIF_KEYS/admin.pub" 2>/dev/null \
+  && echo "  Copied admin.pub        → notification/keys/" \
+  || echo "  notification/keys/admin.pub already present — skipping"
+
+cp -n "$MOBILE_KEYS/mobile.pub" "$NOTIF_KEYS/mobile.pub" 2>/dev/null \
+  && echo "  Copied mobile.pub       → notification/keys/" \
+  || echo "  notification/keys/mobile.pub already present — skipping"
 
 echo ""
 
@@ -136,6 +157,7 @@ echo ""
 ADMIN_PUB=$(b64  "$ADMIN_KEYS/admin.pub")
 MOBILE_PUB=$(b64 "$MOBILE_KEYS/mobile.pub")
 OCPP_PUB=$(b64   "$OCPP_KEYS/ocpp.pub")
+NOTIF_PUB=$(b64  "$NOTIF_KEYS/notification.pub")
 
 # ── Step 3: Print .env blocks ─────────────────────────────────────────────────
 
@@ -148,7 +170,7 @@ echo "# panda-ev-csms-system-admin/.env"
 echo "SERVICE_NAME=admin-api"
 echo "SERVICE_JWT_PRIVATE_KEY_PATH=$ADMIN_KEYS/admin.pem"
 echo "TRUSTED_SERVICE_PUBLIC_KEYS_DIR=$ADMIN_KEYS"
-echo "TRUSTED_SERVICE_ISSUERS=mobile-api:mobile,ocpp-csms:ocpp"
+echo "TRUSTED_SERVICE_ISSUERS=mobile-api:mobile,ocpp-csms:ocpp,notification-service:notification"
 echo "JWT_PRIVATE_KEY_PATH=$ADMIN_KEYS/admin.pem"
 echo "JWT_PUBLIC_KEY_PATH=$ADMIN_KEYS/admin.pub"
 echo ""
@@ -157,7 +179,7 @@ echo "# panda-ev-client-mobile/.env"
 echo "SERVICE_NAME=mobile-api"
 echo "SERVICE_JWT_PRIVATE_KEY_PATH=$MOBILE_KEYS/mobile.pem"
 echo "TRUSTED_SERVICE_PUBLIC_KEYS_DIR=$MOBILE_KEYS"
-echo "TRUSTED_SERVICE_ISSUERS=admin-api:admin,ocpp-csms:ocpp"
+echo "TRUSTED_SERVICE_ISSUERS=admin-api:admin,ocpp-csms:ocpp,notification-service:notification"
 echo "JWT_PRIVATE_KEY_PATH=$MOBILE_KEYS/mobile.pem"
 echo "JWT_PUBLIC_KEY_PATH=$MOBILE_KEYS/mobile.pub"
 echo ""
@@ -169,6 +191,13 @@ echo "TRUSTED_SERVICE_PUBLIC_KEYS_DIR=$OCPP_KEYS"
 echo "TRUSTED_SERVICE_ISSUERS=mobile-api:mobile,admin-api:admin"
 echo ""
 
+echo "# panda-ev-notification/.env"
+echo "SERVICE_NAME=notification-service"
+echo "SERVICE_JWT_PRIVATE_KEY_PATH=$NOTIF_KEYS/notification.pem"
+echo "TRUSTED_SERVICE_PUBLIC_KEYS_DIR=$NOTIF_KEYS"
+echo "TRUSTED_SERVICE_ISSUERS=mobile-api:mobile,admin-api:admin"
+echo ""
+
 echo "================================================================"
 echo "OPTION B — Base64 env vars (K8s Secrets / CI)                  "
 echo "================================================================"
@@ -177,7 +206,7 @@ echo ""
 echo "# panda-ev-csms-system-admin/.env"
 echo "SERVICE_NAME=admin-api"
 echo "SERVICE_JWT_PRIVATE_KEY=$(b64 "$ADMIN_KEYS/admin.pem")"
-echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"mobile-api\",\"key\":\"${MOBILE_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCPP_PUB}\"}]"
+echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"mobile-api\",\"key\":\"${MOBILE_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCPP_PUB}\"},{\"iss\":\"notification-service\",\"key\":\"${NOTIF_PUB}\"}]"
 echo "JWT_PRIVATE_KEY=$(b64 "$ADMIN_KEYS/admin.pem")"
 echo "JWT_PUBLIC_KEY=${ADMIN_PUB}"
 echo ""
@@ -185,7 +214,7 @@ echo ""
 echo "# panda-ev-client-mobile/.env"
 echo "SERVICE_NAME=mobile-api"
 echo "SERVICE_JWT_PRIVATE_KEY=$(b64 "$MOBILE_KEYS/mobile.pem")"
-echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"admin-api\",\"key\":\"${ADMIN_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCPP_PUB}\"}]"
+echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"admin-api\",\"key\":\"${ADMIN_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCPP_PUB}\"},{\"iss\":\"notification-service\",\"key\":\"${NOTIF_PUB}\"}]"
 echo "JWT_PRIVATE_KEY=$(b64 "$MOBILE_KEYS/mobile.pem")"
 echo "JWT_PUBLIC_KEY=${MOBILE_PUB}"
 echo ""
@@ -193,6 +222,12 @@ echo ""
 echo "# panda-ev-ocpp/.env"
 echo "SERVICE_NAME=ocpp-csms"
 echo "SERVICE_JWT_PRIVATE_KEY=$(b64 "$OCPP_KEYS/ocpp.pem")"
+echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"mobile-api\",\"key\":\"${MOBILE_PUB}\"},{\"iss\":\"admin-api\",\"key\":\"${ADMIN_PUB}\"}]"
+echo ""
+
+echo "# panda-ev-notification/.env"
+echo "SERVICE_NAME=notification-service"
+echo "SERVICE_JWT_PRIVATE_KEY=$(b64 "$NOTIF_KEYS/notification.pem")"
 echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"mobile-api\",\"key\":\"${MOBILE_PUB}\"},{\"iss\":\"admin-api\",\"key\":\"${ADMIN_PUB}\"}]"
 echo ""
 

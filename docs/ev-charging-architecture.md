@@ -1,8 +1,8 @@
 # เอกสารสถาปัตยกรรมระบบบริหารจัดการการชาร์จรถยนต์ไฟฟ้า (EV Charging Management System)
 
-> **Panda EV Platform** — วิเคราะห์สถาปัตยกรรม 3 Microservices
+> **Panda EV Platform** — วิเคราะห์สถาปัตยกรรม 4 Microservices
 > จัดทำโดย: Claude Code Analysis
-> วันที่: 2026-03-22
+> อัปเดตล่าสุด: 2026-03-22
 
 ---
 
@@ -16,14 +16,23 @@
 6. [Security Implementation](#6-security-implementation)
 7. [Performance Optimization](#7-performance-optimization)
 8. [Implementation Checklist](#8-implementation-checklist)
-9. [OCPP Action Gap Analysis](#9-ocpp-action-gap-analysis)
+9. [OCPP Action — Full Implementation Status](#9-ocpp-action--full-implementation-status)
 10. [Deployment บน Google Cloud](#10-deployment-บน-google-cloud)
 
 ---
 
 ## 1. ภาพรวมสถาปัตยกรรมระบบ
 
-### 1.1 Mermaid Diagram — ภาพรวม
+### 1.1 Service Registry
+
+| Service | Port | DB Schema | URL Prefix | วัตถุประสงค์ |
+|---|---|---|---|---|
+| `panda-ev-csms-system-admin` | 3001 | `panda_ev_system` (29 models) | `/api/admin/v1/` | IAM, CMS, Stations, Pricing, Audit |
+| `panda-ev-client-mobile` | 4001 | `panda_ev_core` (13 models) | `/api/mobile/v1/` | Auth, Wallet, Charging Sessions |
+| `panda-ev-ocpp` | 4002 | `panda_ev_ocpp` (4 models) | WebSocket only | OCPP 1.6J Charger Protocol Handler |
+| `panda-ev-notification` | 5001 | `panda_ev_notifications` (6 models) | `/api/notification/` | FCM Push, Stats Aggregation, Admin WS Dashboard |
+
+### 1.2 Mermaid Diagram — ภาพรวม
 
 ```mermaid
 graph TB
@@ -36,86 +45,116 @@ graph TB
     subgraph ADMIN["🏢 CSMS Admin Service (Port 3001)\npanda-ev-csms-system-admin"]
         A_REST["REST API\n/api/admin/v1/..."]
         A_WS["Socket.IO Gateway\n/pricing, / (notifications)"]
-        A_RMQ["RabbitMQ Consumer\nPANDA_EV_USER_EVENTS\nmessage.created"]
+        A_RMQ_SUB["RabbitMQ Consumer\nPANDA_EV_USER_EVENTS\nmessage.created"]
+        A_RMQ_PUB["RabbitMQ Publisher\nPANDA_EV_ADMIN_COMMANDS\nPANDA_EV_SYSTEM_EVENTS"]
         A_DB[("PostgreSQL\npanda_ev_system\n29 Models")]
         A_CACHE[("Redis\nCache + Sessions")]
     end
 
     subgraph OCPP["⚡ OCPP Service (Port 4002)\npanda-ev-ocpp"]
         O_WS["WebSocket Gateway\nws://host/ocpp/{identity}\nOCPP 1.6J Protocol"]
-        O_REST["Internal Services\n(No REST endpoints)"]
         O_RMQ_PUB["RabbitMQ Publisher\nPANDA_EV_QUEUE"]
-        O_RMQ_SUB["RabbitMQ Consumer\nPANDA_EV_CSMS_COMMANDS"]
+        O_RMQ_SUB["RabbitMQ Consumer\nPANDA_EV_CSMS_COMMANDS\nPANDA_EV_ADMIN_COMMANDS"]
         O_DB[("PostgreSQL\npanda_ev_ocpp\n4 Models")]
-        O_CACHE[("Redis\nCharger Status\nSession State")]
+        O_CACHE[("Redis\nCharger Status\nSession State\nCommand Results")]
     end
 
     subgraph MOBILE["📱 Mobile API Service (Port 4001)\npanda-ev-client-mobile"]
         M_REST["REST API\n/api/mobile/v1/..."]
-        M_RMQ_PUB["RabbitMQ Publisher\nPANDA_EV_CSMS_COMMANDS\nPANDA_EV_USER_EVENTS"]
+        M_RMQ_PUB["RabbitMQ Publisher\nPANDA_EV_CSMS_COMMANDS\nPANDA_EV_USER_EVENTS\nPANDA_EV_NOTIFICATIONS"]
         M_RMQ_SUB["RabbitMQ Consumer\nPANDA_EV_QUEUE\nPANDA_EV_SYSTEM_EVENTS"]
         M_DB[("PostgreSQL\npanda_ev_core\n13 Models")]
         M_CACHE[("Redis\nBilling Snapshot\nCharger Lock\nParking Timer")]
         M_SYSDB[("SystemDbService\nRead from\npanda_ev_system")]
     end
 
+    subgraph NOTIF["🔔 Notification Service (Port 5001)\npanda-ev-notification"]
+        N_RMQ_SUB["RabbitMQ Consumer\nPANDA_EV_NOTIFICATIONS (DLQ)\nPANDA_EV_QUEUE (aggregation)"]
+        N_WS["Socket.IO Gateway\n/admin-stats namespace"]
+        N_DB[("PostgreSQL\npanda_ev_notifications\n6 Models")]
+        N_CACHE[("Redis\nDedup Keys\nRate Limit Windows")]
+        N_FCM["Firebase FCM\nSend Push"]
+    end
+
     subgraph INFRA["🛠️ Shared Infrastructure"]
         MQ[("🐰 RabbitMQ\nMessage Broker")]
         REDIS[("🔴 Redis\nShared Cache\ncharger_status:{id}")]
-        FCM["🔔 Firebase FCM\nPush Notifications"]
+        FCM["🔔 Firebase FCM\nCloud Messaging"]
     end
 
     %% Admin connections
     WEB -->|HTTPS REST| A_REST
     WEB -->|Socket.IO| A_WS
+    WEB -->|Socket.IO /admin-stats| N_WS
     A_REST --- A_DB
     A_REST --- A_CACHE
     A_WS --- A_CACHE
-    A_RMQ --- A_DB
+    A_RMQ_SUB --- A_DB
 
     %% Mobile connections
     MOB -->|HTTPS REST + JWT| M_REST
     M_REST --- M_DB
     M_REST --- M_CACHE
     M_REST --- M_SYSDB
-    M_REST -->|FCM Push| FCM
-    FCM -->|Push| MOB
 
     %% OCPP connections
     EV <-->|WebSocket OCPP 1.6J| O_WS
     O_WS --- O_DB
     O_WS --- O_CACHE
 
-    %% RabbitMQ flows
+    %% RabbitMQ flows — Mobile ↔ OCPP
     M_RMQ_PUB -->|session.start\nsession.stop| MQ
     MQ -->|PANDA_EV_CSMS_COMMANDS| O_RMQ_SUB
-    O_RMQ_PUB -->|transaction.started\ntransaction.stopped\ncharger.booted\netc.| MQ
+    O_RMQ_PUB -->|transaction.started\ntransaction.stopped\ncharger.booted etc.| MQ
     MQ -->|PANDA_EV_QUEUE| M_RMQ_SUB
+    MQ -->|PANDA_EV_QUEUE| N_RMQ_SUB
+
+    %% RabbitMQ flows — Admin ↔ OCPP
+    A_RMQ_PUB -->|ocpp.command| MQ
+    MQ -->|PANDA_EV_ADMIN_COMMANDS| O_RMQ_SUB
+
+    %% RabbitMQ flows — User sync
     M_RMQ_PUB -->|user.registered| MQ
-    MQ -->|PANDA_EV_USER_EVENTS| A_RMQ
-    A_REST -->|content.invalidate| MQ
+    MQ -->|PANDA_EV_USER_EVENTS| A_RMQ_SUB
+
+    %% RabbitMQ flows — CMS invalidation
+    A_RMQ_PUB -->|content.invalidate| MQ
     MQ -->|PANDA_EV_SYSTEM_EVENTS| M_RMQ_SUB
+
+    %% RabbitMQ flows — Notifications
+    M_RMQ_PUB -->|notification.session\nnotification.targeted| MQ
+    MQ -->|PANDA_EV_NOTIFICATIONS| N_RMQ_SUB
+    N_FCM -->|Push| FCM
+    FCM -->|Push| MOB
 
     %% Redis shared
     O_CACHE -->|charger_status:{identity}| REDIS
     REDIS -->|read live status| A_CACHE
+    REDIS -->|read live status| M_CACHE
 
     %% Admin reads Mobile DB
     M_SYSDB -->|raw pg Pool\nread-only| A_DB
 
+    %% Notification DB
+    N_RMQ_SUB --- N_DB
+    N_RMQ_SUB --- N_CACHE
+    N_WS --- N_DB
+
     classDef admin fill:#4A90D9,color:#fff,stroke:#2171B5
     classDef ocpp fill:#27AE60,color:#fff,stroke:#1E8449
     classDef mobile fill:#8E44AD,color:#fff,stroke:#6C3483
+    classDef notif fill:#E74C3C,color:#fff,stroke:#C0392B
     classDef infra fill:#E67E22,color:#fff,stroke:#D35400
     classDef external fill:#ECF0F1,color:#2C3E50,stroke:#BDC3C7
     class ADMIN admin
     class OCPP ocpp
     class MOBILE mobile
+    class NOTIF notif
     class INFRA infra
     class External external
 ```
 
-### 1.2 Legend — คำอธิบายสัญลักษณ์
+### 1.3 Legend — คำอธิบายสัญลักษณ์
 
 | สัญลักษณ์ | ประเภทการสื่อสาร | ลักษณะ |
 |---|---|---|
@@ -129,56 +168,62 @@ graph TB
 
 ## 2. REST API Specification
 
-> **หมายเหตุ:** ใน Architecture ปัจจุบัน Service ไม่ได้เรียก REST API หากันโดยตรง
-> การสื่อสารระหว่าง Service ใช้ **RabbitMQ** (async) และ **Redis** (shared state)
+> **หมายเหตุ:** การสื่อสารระหว่าง Service ใช้ **RabbitMQ** (async) และ **Redis** (shared state)
 > Mobile อ่านข้อมูล Admin ผ่าน **SystemDbService** (raw PostgreSQL pool)
 
-### 2.1 CSMS Admin → OCPP (ไม่มี REST — ใช้ Redis + ไม่มีการเรียกโดยตรง)
+### 2.1 Admin REST API (`/api/admin/v1/`)
 
-| เส้นทาง | วิธี | บริการต้นทาง | บริการปลายทาง | วัตถุประสงค์ | หมายเหตุ |
-|---|---|---|---|---|---|
-| *ไม่มี* | — | Admin | OCPP | Admin ไม่เรียก OCPP โดยตรง | ใช้ Redis `charger_status:*` แทน |
-
-**สิ่งที่ Admin อ่านจาก OCPP ผ่าน Redis:**
-
-```typescript
-// GET /api/admin/v1/stations/:id/chargers/live
-// charger-live-status.service.ts:getChargerLiveStatus()
-
-const liveStatus = await redis.get(`charger_status:${ocppIdentity}`);
-// Returns: { status, identity, updatedAt } | null
-```
-
-### 2.2 CSMS Admin → Mobile (ผ่าน RabbitMQ, ไม่ใช่ REST)
-
-| Queue | Routing Key | ต้นทาง | ปลายทาง | วัตถุประสงค์ |
-|---|---|---|---|---|
-| `PANDA_EV_SYSTEM_EVENTS` | `content.invalidate` | Admin | Mobile | ล้าง Cache CMS เมื่อแก้ไข Banner/Legal |
-
-### 2.3 Mobile → OCPP (ผ่าน RabbitMQ, ไม่ใช่ REST)
-
-| Queue | Routing Key | ต้นทาง | ปลายทาง | วัตถุประสงค์ |
-|---|---|---|---|---|
-| `PANDA_EV_CSMS_COMMANDS` | `session.start` | Mobile | OCPP | เริ่ม Charging Session |
-| `PANDA_EV_CSMS_COMMANDS` | `session.stop` | Mobile | OCPP | หยุด Charging Session |
-
-### 2.4 REST API สำหรับ Client (External)
-
-#### Admin REST API (`/api/admin/v1/`)
+#### Station & Charger Management
 
 | Method | Endpoint | วัตถุประสงค์ | Auth |
 |---|---|---|---|
-| `POST` | `/auth/login` | เข้าสู่ระบบ | Public |
-| `GET` | `/stations` | รายการสถานี | Bearer + `stations:read` |
-| `POST` | `/stations` | สร้างสถานี | Bearer + `stations:create` |
-| `GET` | `/stations/:id/chargers/live` | สถานะ Charger Real-time | Bearer + `chargers:read` |
+| `GET` | `/stations` | รายการสถานีชาร์จทั้งหมด | Bearer + `stations:read` |
+| `POST` | `/stations` | สร้างสถานีใหม่ | Bearer + `stations:create` |
+| `GET` | `/stations/:id` | รายละเอียดสถานี | Bearer + `stations:read` |
+| `PUT` | `/stations/:id` | แก้ไขสถานี | Bearer + `stations:update` |
+| `DELETE` | `/stations/:id` | ลบสถานี (soft delete) | Bearer + `stations:delete` |
+| `GET` | `/stations/:id/chargers/live` | สถานะ Charger Real-time จาก Redis | Bearer + `chargers:read` |
+| `GET` | `/chargers/dashboard` | Dashboard ภาพรวม Charger ทั้งหมด | Bearer + `chargers:read` |
+
+#### OCPP Remote Commands (ใหม่ — 17 endpoints)
+
+| Method | Endpoint | OCPP Action | Auth |
+|---|---|---|---|
+| `POST` | `/chargers/:id/commands/change-availability` | `ChangeAvailability` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/reset` | `Reset` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/clear-cache` | `ClearCache` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/unlock-connector` | `UnlockConnector` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/get-configuration` | `GetConfiguration` | Bearer + `chargers:read` |
+| `POST` | `/chargers/:id/commands/change-configuration` | `ChangeConfiguration` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/get-diagnostics` | `GetDiagnostics` | Bearer + `chargers:read` |
+| `POST` | `/chargers/:id/commands/update-firmware` | `UpdateFirmware` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/trigger-message` | `TriggerMessage` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/reserve-now` | `ReserveNow` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/cancel-reservation` | `CancelReservation` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/send-local-list` | `SendLocalList` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/get-local-list-version` | `GetLocalListVersion` | Bearer + `chargers:read` |
+| `POST` | `/chargers/:id/commands/set-charging-profile` | `SetChargingProfile` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/clear-charging-profile` | `ClearChargingProfile` | Bearer + `chargers:manage` |
+| `POST` | `/chargers/:id/commands/get-composite-schedule` | `GetCompositeSchedule` | Bearer + `chargers:read` |
+| `POST` | `/chargers/:id/commands/data-transfer` | `DataTransfer` | Bearer + `chargers:manage` |
+| `GET` | `/chargers/:id/commands/:commandId/result` | Poll ผลลัพธ์คำสั่ง | Bearer + `chargers:read` |
+
+> **Command Flow:** Admin REST → `PANDA_EV_ADMIN_COMMANDS` queue → OCPP Service
+> ผลลัพธ์เก็บที่ Redis `ocpp:cmd:result:{commandId}` TTL 90 วินาที
+
+#### IAM, Pricing, Other
+
+| Method | Endpoint | วัตถุประสงค์ | Auth |
+|---|---|---|---|
+| `POST` | `/auth/login` | เข้าสู่ระบบ Admin | Public |
 | `GET` | `/users` | รายการ Admin Users | Bearer + `users:read` |
 | `POST` | `/users` | สร้าง Admin User | Bearer + `users:create` |
-| `GET` | `/pricing-tiers` | รายการ Pricing Tier | Bearer + `pricing-tiers:read` |
 | `GET` | `/iam/roles` | รายการ Role | Bearer + `roles:read` |
+| `GET` | `/pricing-tiers` | รายการ Pricing Tier | Bearer + `pricing-tiers:read` |
 | `GET` | `/audit-logs` | ประวัติการดำเนินการ | Bearer + `audit-logs:read` |
+| `GET` | `/mobile-users` | รายการ Mobile Users (read-only mirror) | Bearer + `mobile-users:read` |
 
-#### Mobile REST API (`/api/mobile/v1/`)
+### 2.2 Mobile REST API (`/api/mobile/v1/`)
 
 | Method | Endpoint | วัตถุประสงค์ | Auth |
 |---|---|---|---|
@@ -187,13 +232,33 @@ const liveStatus = await redis.get(`charger_status:${ocppIdentity}`);
 | `POST` | `/auth/login` | เข้าสู่ระบบ | Public |
 | `GET` | `/stations` | รายการสถานีชาร์จ | Bearer |
 | `GET` | `/stations/nearby` | สถานีใกล้เคียง | Bearer |
+| `GET` | `/stations/map` | Map pins สำหรับแผนที่ | Bearer |
+| `GET` | `/stations/:id` | รายละเอียดสถานี | Bearer |
+| `GET` | `/stations/:id/chargers/status` | Live status ของ Charger ทุกตัวในสถานี (ใหม่) | Public |
 | `GET` | `/wallet` | ยอดกระเป๋าเงิน | Bearer |
 | `POST` | `/wallet/top-up` | เติมเงิน | Bearer |
 | `POST` | `/charging-sessions/start` | เริ่มชาร์จ | Bearer |
 | `POST` | `/charging-sessions/:id/stop` | หยุดชาร์จ | Bearer |
 | `GET` | `/charging-sessions` | ประวัติการชาร์จ | Bearer |
+| `GET` | `/charging-sessions/:id/live` | Live status ของ Session ที่กำลังชาร์จ (ใหม่) | Bearer |
 
-### 2.5 Response Format มาตรฐาน (ทุก Service)
+> **`GET /charging-sessions/:id/live`** อ่านข้อมูลจาก 3 Redis keys:
+> - `charging:session:{id}` — billing snapshot (pricePerKwh, meterStart)
+> - `charging:live:{identity}:{connectorId}` — current meterWh จาก MeterValues
+> - `charger_status:{identity}` — online/offline status
+
+### 2.3 Notification REST API (`/api/notification/`)
+
+| Method | Endpoint | วัตถุประสงค์ | Auth |
+|---|---|---|---|
+| `GET` | `/health` | Liveness probe | Public |
+| `GET` | `/templates` | รายการ Notification Templates | Bearer |
+| `POST` | `/templates` | สร้าง Template | Bearer |
+| `GET` | `/logs` | ประวัติการส่ง Notification | Bearer |
+| `GET` | `/stats/daily` | สถิติรายวัน (aggregated) | Bearer |
+| `GET` | `/stats/hourly/:stationId` | สถิติรายชั่วโมงของสถานี | Bearer |
+
+### 2.4 Response Format มาตรฐาน (ทุก Service)
 
 ```json
 {
@@ -215,14 +280,17 @@ const liveStatus = await redis.get(`charger_status:${ocppIdentity}`);
 
 ## 3. RabbitMQ Message Queue Architecture
 
-### 3.1 Exchange และ Queue Design
+### 3.1 Queue Registry (ครบทุก Queue)
 
 | Queue Name | ผู้ส่ง | ผู้รับ | วัตถุประสงค์ | Security |
 |---|---|---|---|---|
-| `PANDA_EV_QUEUE` | OCPP | Mobile | OCPP Events → Mobile Billing/FCM | RS256 JWT |
-| `PANDA_EV_CSMS_COMMANDS` | Mobile | OCPP | Session Commands → Charger | RS256 JWT |
+| `PANDA_EV_QUEUE` | OCPP | Mobile + Notification | OCPP Events (transaction, charger, connector) | RS256 JWT |
+| `PANDA_EV_CSMS_COMMANDS` | Mobile | OCPP | Session Start/Stop Commands | RS256 JWT |
+| `PANDA_EV_ADMIN_COMMANDS` | Admin | OCPP | Remote OCPP Commands (Reset, Config ฯลฯ) | RS256 JWT |
+| `PANDA_EV_NOTIFICATIONS` | Mobile, Admin | Notification | Push Notification Requests (with DLQ) | RS256 JWT |
+| `PANDA_EV_NOTIFICATIONS_DLQ` | Notification (dead-letter) | Monitor/Ops | Failed notifications after 3 retries | — |
 | `PANDA_EV_USER_EVENTS` | Mobile | Admin | User Registration Sync | RS256 JWT |
-| `PANDA_EV_SYSTEM_EVENTS` | Admin | Mobile | CMS Content Invalidation | RS256 JWT |
+| `PANDA_EV_SYSTEM_EVENTS` | Admin | Mobile | CMS Cache Invalidation | RS256 JWT |
 | `message.created` | Chat Service | Admin | Push Notification Trigger | RS256 JWT |
 
 ### 3.2 Message Payload Examples
@@ -240,13 +308,25 @@ const liveStatus = await redis.get(`charger_status:${ocppIdentity}`);
 }
 ```
 
-#### `PANDA_EV_CSMS_COMMANDS` — session.stop
+#### `PANDA_EV_ADMIN_COMMANDS` — ocpp.command (ใหม่)
 
 ```json
 {
-  "routingKey": "session.stop",
+  "routingKey": "ocpp.command",
+  "commandId": "cmd-uuid-0001",
   "identity": "PANDA-THATLUANG-01",
-  "transactionId": 42
+  "action": "Reset",
+  "payload": { "type": "Soft" }
+}
+```
+
+> ผลลัพธ์เก็บที่ Redis `ocpp:cmd:result:{commandId}` (TTL 90s):
+```json
+{
+  "commandId": "cmd-uuid-0001",
+  "status": "Accepted",
+  "response": { "status": "Accepted" },
+  "completedAt": "2026-03-22T08:00:05+07:00"
 }
 ```
 
@@ -280,30 +360,28 @@ const liveStatus = await redis.get(`charger_status:${ocppIdentity}`);
 }
 ```
 
-#### `PANDA_EV_QUEUE` — remote_start.failed
+#### `PANDA_EV_QUEUE` — charger.offline / charger.booted (ใหม่)
 
 ```json
-{
-  "routingKey": "remote_start.failed",
-  "sessionId": "sess-uuid-0001",
-  "identity": "PANDA-THATLUANG-01",
-  "connectorId": 1,
-  "mobileUserId": "user-uuid-0001",
-  "reason": "TIMEOUT",
-  "failedAt": "2026-03-22T08:00:15+07:00"
-}
+{ "routingKey": "charger.offline", "identity": "PANDA-THATLUANG-01", "timestamp": "..." }
+{ "routingKey": "charger.booted", "identity": "PANDA-THATLUANG-01", "model": "SGIC-DC-120K", "firmwareVersion": "1.2.3" }
 ```
 
-#### `PANDA_EV_QUEUE` — connector.status_changed
+#### `PANDA_EV_NOTIFICATIONS` — notification.session (ใหม่)
 
 ```json
 {
-  "routingKey": "connector.status_changed",
-  "identity": "PANDA-THATLUANG-01",
-  "chargerId": "charger-uuid-0001",
-  "connectorId": 1,
-  "status": "Available",
-  "updatedAt": "2026-03-22T09:35:00+07:00"
+  "routingKey": "notification.session",
+  "userId": "user-uuid-0001",
+  "sessionId": "sess-uuid-0001",
+  "stationId": "station-uuid-0001",
+  "chargerIdentity": "PANDA-THATLUANG-01",
+  "fcmTokens": ["token-abc...", "token-xyz..."],
+  "type": "session_completed",
+  "title": "ชาร์จเสร็จแล้ว!",
+  "body": "ใช้พลังงาน 10 kWh ค่าบริการ 10,000 LAK",
+  "data": { "type": "session_completed", "sessionId": "sess-uuid-0001" },
+  "priority": "high"
 }
 ```
 
@@ -321,18 +399,9 @@ const liveStatus = await redis.get(`charger_status:${ocppIdentity}`);
 }
 ```
 
-#### `PANDA_EV_SYSTEM_EVENTS` — content.invalidate
-
-```json
-{
-  "routingKey": "content.invalidate",
-  "slug": "home-banner"
-}
-```
-
 ### 3.3 Service-to-Service JWT Header
 
-ทุก RabbitMQ message จะมี AMQP Header:
+ทุก RabbitMQ message มี AMQP Header:
 
 ```
 x-service-token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
@@ -348,63 +417,49 @@ x-service-token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 }
 ```
 
-ถ้า Token ไม่ผ่านการตรวจสอบ → **nack ทิ้ง** (ไม่ requeue)
+Token ไม่ผ่านการตรวจสอบ → **nack ทิ้ง** (ไม่ requeue)
 
-### 3.4 Error Handling และ Retry Strategy
+### 3.4 DLQ Retry Strategy — Notification Service
 
 ```
-Publisher ─────► RabbitMQ Queue ─────► Consumer
-                                            │
-                               ┌───────────┤
-                               │           ▼
-                          Error?      ackOrNack()
-                               │
-                    ┌──────────┴──────────┐
-                    │                     │
-              Nack (no requeue)     Throw Error
-              (invalid JWT,         (DB failure)
-               bad payload)          → RabbitMQ
-                                     requeues 1x
-                                     then DLQ
+PANDA_EV_NOTIFICATIONS
+  └── Handler ล้มเหลว?
+        ├── retry 1: delay 5s   → re-publish กลับ queue พร้อม x-retry-count: 1
+        ├── retry 2: delay 30s  → re-publish กลับ queue พร้อม x-retry-count: 2
+        ├── retry 3: delay 120s → re-publish กลับ queue พร้อม x-retry-count: 3
+        └── retry 4+: ack + publish → PANDA_EV_NOTIFICATIONS_DLX → PANDA_EV_NOTIFICATIONS_DLQ
 ```
-
-**กลยุทธ์:**
-- `nack` ไม่มี requeue → ข้อความที่ Token ผิดหรือ Payload ไม่ถูกต้อง
-- `throw` error → RabbitMQ requeue อัตโนมัติ (1 ครั้ง) แล้ว Dead Letter Queue
-- ควรเพิ่ม DLQ (`PANDA_EV_DLQ`) เพื่อ Monitor ข้อความที่ล้มเหลว
 
 ---
 
 ## 4. WebSocket Communication
 
-### 4.1 Connection Management
+### 4.1 WebSocket Gateways ทั้งหมด
 
-#### OCPP Gateway (Port 4002)
+| Service | URL / Namespace | Auth | วัตถุประสงค์ |
+|---|---|---|---|
+| OCPP | `ws://host/ocpp/{identity}` | OCPP Basic Auth (optional) | Charger ↔ CSMS OCPP 1.6J |
+| Admin | `Socket.IO /` | Bearer JWT บน `handleConnection` | Admin push notifications |
+| Admin | `Socket.IO /pricing` | Bearer JWT | Real-time pricing updates |
+| Notification | `Socket.IO /admin-stats` | Bearer JWT | Live session stats + notification events |
 
-```
-wss://host/ocpp/{chargeBoxIdentity}
-Subprotocol: ocpp1.6
-```
+### 4.2 Admin Notification Gateway (Port 3001)
 
-| Event | Handler | ผล |
-|---|---|---|
-| `connection` | `handleConnection()` | ตรวจสอบ subprotocol, เก็บ socket ใน Map |
-| `message` | `handleCall()` | Route ไปยัง handler ตาม action |
-| `disconnect` | `handleDisconnection()` | Set status OFFLINE, ล้าง Redis |
+| Namespace | Room | Event Emitted | Trigger |
+|---|---|---|---|
+| `/` | `user:{userId}` | `notification` | Consumer รับ `message.created` |
+| `/pricing` | `station:{stationId}` | `pricing:updated` | Pricing tier ถูกแก้ไข |
 
-#### Admin Socket.IO (Port 3001)
+### 4.3 Notification Admin Stats Gateway (Port 5001 — ใหม่)
 
-| Namespace | Room | วัตถุประสงค์ |
-|---|---|---|
-| `/` (default) | `user:{userId}` | Push notifications ถึง Admin |
-| `/pricing` | `station:{stationId}` | Real-time pricing updates |
+| Namespace | Event Emitted | Payload | Trigger |
+|---|---|---|---|
+| `/admin-stats` | `notification:sent` | `{ type, userId, stationId, chargerIdentity, status, sentAt }` | หลัง FCM send ทุกครั้ง |
+| `/admin-stats` | `session:live_update` | `{ routingKey, identity, stationId, event: 'session_started'/'session_completed', ...}` | OCPP transaction events |
+| `/admin-stats` | `stats:hourly_updated` | `{ stationId, stationName, hour, sessionsStarted, totalEnergyKwh, ... }` | หลัง aggregation UPSERT |
+| `/admin-stats` | `system:alert` | `{ level, message, data }` | Errors / DLQ overflow |
 
-#### Mobile WebSocket
-
-> Mobile ไม่มี WebSocket Gateway โดยตรง
-> ใช้ **REST Polling** + **FCM Push Notification** แทน
-
-### 4.2 OCPP Action Event Table
+### 4.4 OCPP 1.6J Action — ตารางครบถ้วน
 
 | Action | ทิศทาง | Handler | ผล DB | ผล Redis | RabbitMQ |
 |---|---|---|---|---|---|
@@ -412,28 +467,51 @@ Subprotocol: ocpp1.6
 | `StatusNotification` (id=0) | Station→OCPP | `handleStatusNotification()` | Charger.status | `charger_status:{id}` | `charger.status_changed` |
 | `StatusNotification` (id>0) | Station→OCPP | `handleStatusNotification()` | Connector.status | `connector_status:{id}:{conn}` | `connector.status_changed` |
 | `Heartbeat` | Station→OCPP | `handleHeartbeat()` | Charger.lastHeartbeat | — | `charger.heartbeat` |
+| `Authorize` | Station→OCPP | `handleAuthorize()` | — | reads `session:pending:*` | — |
 | `StartTransaction` | Station→OCPP | `handleStartTransaction()` | Transaction(ACTIVE) | del `session:pending:*` | `transaction.started` |
 | `StopTransaction` | Station→OCPP | `handleStopTransaction()` | Transaction(COMPLETED) | — | `transaction.stopped` |
-| `MeterValues` | Station→OCPP | `handleMeterValues()` | — | `charging:live:{id}:{conn}` | — |
+| `MeterValues` | Station→OCPP | `handleMeterValues()` | — | `charging:live:{id}:{conn}` (8h) | — |
+| `DataTransfer` | Both | `handleDataTransfer()` | OcppLog | — | `charger.data_transfer` |
+| `DiagnosticsStatusNotification` | Station→OCPP | `handleDiagnosticsStatus()` | OcppLog | — | `charger.diagnostics_status` |
+| `FirmwareStatusNotification` | Station→OCPP | `handleFirmwareStatus()` | OcppLog | — | `charger.firmware_status` |
 | `RemoteStartTransaction` | OCPP→Station | `sendRemoteStart()` | — | `session:pending:*` | `remote_start.failed` (ถ้าล้มเหลว) |
 | `RemoteStopTransaction` | OCPP→Station | `sendRemoteStop()` | — | — | — |
+| `ChangeAvailability` | OCPP→Station | `sendChangeAvailability()` | — | result at `ocpp:cmd:result:*` | — |
+| `Reset` | OCPP→Station | `sendReset()` | — | result at `ocpp:cmd:result:*` | — |
+| `ClearCache` | OCPP→Station | `sendClearCache()` | — | result at `ocpp:cmd:result:*` | — |
+| `UnlockConnector` | OCPP→Station | `sendUnlockConnector()` | — | result at `ocpp:cmd:result:*` | — |
+| `GetConfiguration` | OCPP→Station | `sendGetConfiguration()` | — | result at `ocpp:cmd:result:*` | — |
+| `ChangeConfiguration` | OCPP→Station | `sendChangeConfiguration()` | — | result at `ocpp:cmd:result:*` | — |
+| `GetDiagnostics` | OCPP→Station | `sendGetDiagnostics()` | — | result at `ocpp:cmd:result:*` | — |
+| `UpdateFirmware` | OCPP→Station | `sendUpdateFirmware()` | — | result at `ocpp:cmd:result:*` | — |
+| `TriggerMessage` | OCPP→Station | `sendTriggerMessage()` | — | result at `ocpp:cmd:result:*` | — |
+| `ReserveNow` | OCPP→Station | `sendReserveNow()` | — | result at `ocpp:cmd:result:*` | — |
+| `CancelReservation` | OCPP→Station | `sendCancelReservation()` | — | result at `ocpp:cmd:result:*` | — |
+| `SendLocalList` | OCPP→Station | `sendLocalList()` | — | result at `ocpp:cmd:result:*` | — |
+| `GetLocalListVersion` | OCPP→Station | `sendGetLocalListVersion()` | — | result at `ocpp:cmd:result:*` | — |
+| `SetChargingProfile` | OCPP→Station | `sendSetChargingProfile()` | — | result at `ocpp:cmd:result:*` | — |
+| `ClearChargingProfile` | OCPP→Station | `sendClearChargingProfile()` | — | result at `ocpp:cmd:result:*` | — |
+| `GetCompositeSchedule` | OCPP→Station | `sendGetCompositeSchedule()` | — | result at `ocpp:cmd:result:*` | — |
 | Disconnect | — | `handleDisconnection()` | — | `charger_status:{id}=OFFLINE` | `charger.offline` |
 
-### 4.3 Redis Key Reference (ทั้ง 3 Service)
+### 4.5 Redis Key Reference (ทุก Service)
 
 | Key Pattern | TTL | ผู้เขียน | ผู้อ่าน | วัตถุประสงค์ |
 |---|---|---|---|---|
-| `charger_status:{identity}` | 600s | OCPP | Admin | Charger status สำหรับ Dashboard |
+| `charger_status:{identity}` | 600s | OCPP | Admin, Mobile | Charger status สำหรับ Dashboard + Live API |
 | `connector_status:{chargerId}:{connectorId}` | 60s | OCPP | OCPP | Connector status cache |
 | `session:pending:{identity}:{connectorId}` | 300s | OCPP SessionService | OCPP handleStartTransaction | เชื่อม Mobile session กับ OCPP transaction |
-| `charging:live:{identity}:{connectorId}` | 8h | OCPP | — | Live meter readings (Wh) |
+| `charging:live:{identity}:{connectorId}` | 8h | OCPP | Mobile | Live meter readings (Wh) จาก MeterValues |
+| `ocpp:cmd:result:{commandId}` | 90s | OCPP AdminCommandService | Admin REST (poll) | ผลลัพธ์คำสั่ง Remote OCPP |
 | `charger:apikey:{identity}` | — | Admin | OCPP | Auth API key สำหรับ Charger |
-| `charging:session:{sessionId}` | 8h | Mobile | Mobile OcppConsumer | Billing snapshot |
+| `charging:session:{sessionId}` | 8h | Mobile | Mobile OcppConsumer | Billing snapshot (pricePerKwh, fees config) |
 | `charging:charger:{identity}` | 8h | Mobile | Mobile | Lock ป้องกัน double-start |
-| `parking:timer:{identity}:{connectorId}` | 8h | Mobile | Mobile | Parking fee timer |
+| `parking:timer:{identity}:{connectorId}` | 8h | Mobile | Mobile | Parking fee timer state |
 | `refresh:{userId}:{tokenId}` | 7d | Admin/Mobile | Admin/Mobile | Refresh token tracking |
 | `svc:jti:{jti}` | 60s | ServiceJwtService | ServiceJwtService | Anti-replay blacklist |
 | `cache:{resource}:{md5(params)}` | Varies | All Services | All Services | Query result cache |
+| `dedup:{sessionId}:{type}` | 24h | Notification | Notification | ป้องกันการส่ง notification ซ้ำ |
+| `ratelimit:{userId}:{type}:{window}` | Window-based | Notification | Notification | Sliding window rate limit |
 
 ---
 
@@ -448,28 +526,49 @@ sequenceDiagram
     participant DB_A as PostgreSQL<br/>panda_ev_system
     participant MQ as RabbitMQ
     participant Mobile as Mobile API<br/>(Port 4001)
-    participant DB_M as PostgreSQL<br/>panda_ev_core
 
     Admin->>CSMS: POST /api/admin/v1/stations
-    CSMS->>DB_A: INSERT station (panda_ev_system)
-    DB_A-->>CSMS: station created
-    CSMS->>DB_A: INSERT charger, connectors
+    CSMS->>DB_A: INSERT station + chargers + connectors
     CSMS->>CSMS: cache.invalidate('stations')
-    CSMS-->>Admin: 201 Created { stationId, ... }
-
-    Note over CSMS,Mobile: Station data is read by Mobile<br/>via SystemDbService (raw pg Pool)<br/>No event needed — Mobile reads on-demand
+    CSMS-->>Admin: 201 Created { stationId }
 
     Admin->>CSMS: POST /api/admin/v1/station-pricings
     CSMS->>DB_A: INSERT station_pricing + pricing_tier
     CSMS-->>Admin: 201 Created
 
-    Note over CSMS,MQ: Admin can invalidate CMS cache
-    CSMS->>MQ: publish PANDA_EV_SYSTEM_EVENTS<br/>{ routingKey: 'content.invalidate', slug }
+    CSMS->>MQ: publish PANDA_EV_SYSTEM_EVENTS { routingKey: 'content.invalidate' }
     MQ->>Mobile: content.invalidate
-    Mobile->>Mobile: del redis cache:content:{slug}
+    Mobile->>Mobile: del Redis cache:stations:*
 ```
 
-### 5.2 Scenario 2: User เริ่มชาร์จ (Full Flow)
+### 5.2 Scenario 2: Admin ส่งคำสั่ง OCPP Remote (ใหม่)
+
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant CSMS as CSMS Admin<br/>(Port 3001)
+    participant MQ as RabbitMQ
+    participant OCPP as OCPP Service<br/>(Port 4002)
+    participant Redis as Redis
+    participant Station as EV Station
+
+    Admin->>CSMS: POST /chargers/:id/commands/reset { type: "Soft" }
+    CSMS->>CSMS: OcppCommandService.dispatchCommand()
+    CSMS->>MQ: publish PANDA_EV_ADMIN_COMMANDS<br/>{ commandId, identity, action: 'Reset', payload }
+    CSMS-->>Admin: 202 Accepted { commandId }
+
+    MQ->>OCPP: ocpp.command (verify x-service-token)
+    OCPP->>Station: CALL Reset { type: "Soft" }
+    Station-->>OCPP: CALLRESULT { status: "Accepted" }
+    OCPP->>Redis: SET ocpp:cmd:result:{commandId} (TTL 90s)
+
+    Admin->>CSMS: GET /chargers/:id/commands/{commandId}/result
+    CSMS->>Redis: GET ocpp:cmd:result:{commandId}
+    Redis-->>CSMS: { status: "Accepted", response: {...} }
+    CSMS-->>Admin: 200 OK { status: "Accepted" }
+```
+
+### 5.3 Scenario 3: User เริ่มชาร์จ (Full Flow)
 
 ```mermaid
 sequenceDiagram
@@ -479,31 +578,28 @@ sequenceDiagram
     participant Redis_M as Redis<br/>(Mobile)
     participant MQ as RabbitMQ
     participant OCPP as OCPP Service<br/>(Port 4002)
-    participant Redis_O as Redis<br/>(OCPP)
     participant Station as EV Station<br/>(OCPP 1.6J)
 
     User->>App: กดปุ่ม "เริ่มชาร์จ"
-    App->>Mobile: POST /api/mobile/v1/charging-sessions/start
+    App->>Mobile: POST /charging-sessions/start
     Mobile->>Mobile: checkWalletBalance() ≥ minBalance
-    Mobile->>Redis_M: GET charging:charger:{identity} (busy check)
-    Redis_M-->>Mobile: null (available)
+    Mobile->>Redis_M: GET charging:charger:{identity} (busy check → null)
     Mobile->>Mobile: CREATE ChargingSession (ACTIVE)
-    Mobile->>Mobile: queryPricingTier() from panda_ev_system
-    Mobile->>Redis_M: SET charging:session:{id} (billing snapshot)
-    Mobile->>Redis_M: SET charging:charger:{identity} (lock)
-    Mobile->>MQ: publish PANDA_EV_CSMS_COMMANDS<br/>{ routingKey: 'session.start', sessionId, identity, connectorId }
+    Mobile->>Mobile: queryPricingTier() via SystemDbService
+    Mobile->>Redis_M: SET charging:session:{id} (billing snapshot, 8h)
+    Mobile->>Redis_M: SET charging:charger:{identity} (lock, 8h)
+    Mobile->>MQ: publish PANDA_EV_CSMS_COMMANDS { session.start }
     Mobile-->>App: 201 { sessionId, status: 'ACTIVE' }
-    App-->>User: "กำลังเริ่มชาร์จ..."
 
     MQ->>OCPP: session.start (verify x-service-token)
-    OCPP->>Redis_O: SET session:pending:{identity}:{connectorId}
-    OCPP->>Station: CALL RemoteStartTransaction { connectorId, idTag }
+    OCPP->>Redis_M: SET session:pending:{identity}:{connectorId}
+    OCPP->>Station: CALL RemoteStartTransaction
     Station-->>OCPP: CALLRESULT { status: 'Accepted' }
 
-    Station->>OCPP: CALL StartTransaction { connectorId, meterStart }
-    OCPP->>OCPP: handleStartTransaction()
-    OCPP->>Redis_O: DEL session:pending:{identity}:{connectorId}
-    OCPP->>MQ: publish PANDA_EV_QUEUE<br/>{ routingKey: 'transaction.started', ocppTransactionId, meterStart }
+    Station->>OCPP: CALL StartTransaction { meterStart: 10000 }
+    OCPP->>OCPP: handleStartTransaction() → CREATE Transaction
+    OCPP->>Redis_M: DEL session:pending:*
+    OCPP->>MQ: publish PANDA_EV_QUEUE { transaction.started }
 
     MQ->>Mobile: transaction.started
     Mobile->>Mobile: UPDATE ChargingSession.ocppTransactionId
@@ -511,7 +607,7 @@ sequenceDiagram
     App-->>User: "ชาร์จอยู่... ⚡"
 ```
 
-### 5.3 Scenario 3: ชาร์จเสร็จและคิดค่าบริการ
+### 5.4 Scenario 4: ชาร์จเสร็จ + Notification Service (ใหม่)
 
 ```mermaid
 sequenceDiagram
@@ -519,98 +615,88 @@ sequenceDiagram
     participant OCPP as OCPP Service
     participant MQ as RabbitMQ
     participant Mobile as Mobile API
-    participant Redis as Redis (Mobile)
-    participant DB as PostgreSQL<br/>panda_ev_core
+    participant Notif as Notification Service<br/>(Port 5001)
+    participant Redis_N as Redis (Notification)
     participant FCM as Firebase FCM
     actor User
 
-    Station->>OCPP: CALL StopTransaction { transactionId, meterStop, reason }
-    OCPP->>OCPP: handleStopTransaction()
-    OCPP->>DB: UPDATE Transaction (COMPLETED, meterStop)
-    OCPP->>MQ: publish transaction.stopped<br/>{ ocppTransactionId, meterStop: 20000Wh }
+    Station->>OCPP: CALL StopTransaction { meterStop: 20000 }
+    OCPP->>OCPP: UPDATE Transaction (COMPLETED)
+    OCPP->>MQ: publish transaction.stopped
 
     MQ->>Mobile: transaction.stopped
-    Mobile->>DB: findSession by ocppTransactionId
-    Mobile->>Redis: GET charging:session:{id} → billing snapshot
+    Mobile->>Mobile: คำนวณ energy = 10kWh, amount = 10,000 LAK
+    Mobile->>Mobile: $transaction([UPDATE session, UPDATE wallet, INSERT walletTx])
+    Mobile->>Mobile: DEL charging:session:{id} + charging:charger:{identity}
 
-    Note over Mobile: คำนวณค่าใช้จ่าย
-    Note over Mobile: energy = (20000-10000) / 1000 = 10 kWh
-    Note over Mobile: amount = 10 × 1000 = 10,000 LAK
+    Mobile->>MQ: publish PANDA_EV_NOTIFICATIONS<br/>{ routingKey: 'notification.session',<br/>  fcmTokens: [...], type: 'session_completed',<br/>  title: 'ชาร์จเสร็จแล้ว!', ... }
 
-    Mobile->>DB: $transaction([<br/>  UPDATE ChargingSession (COMPLETED, 10kWh, 10000LAK),<br/>  UPDATE Wallet (balance -= 10000),<br/>  INSERT WalletTransaction (CHARGE, 10000LAK)<br/>])
-
-    alt เปิด Unplug Fee
-        Mobile->>DB: $transaction([<br/>  UPDATE Wallet (balance -= feeAmount),<br/>  INSERT WalletTransaction (CHARGE, "Service Fee")<br/>])
-    end
-
-    alt เปิด Parking Fee
-        Mobile->>Redis: SET parking:timer:{identity}:{connectorId}
-        Mobile->>FCM: sendToUser(userId, { type: 'parking_warning' })
-        FCM-->>User: 🔔 "ชาร์จเสร็จแล้ว กรุณาถอดสายชาร์จ"
-    end
-
-    Mobile->>Redis: DEL charging:session:{id}
-    Mobile->>Redis: DEL charging:charger:{identity}
+    MQ->>Notif: notification.session
+    Notif->>Redis_N: SET dedup:{sessionId}:session_completed NX EX 86400
+    Redis_N-->>Notif: OK (not duplicate)
+    Notif->>Redis_N: check ratelimit:{userId}:session_completed
+    Redis_N-->>Notif: allowed
+    Notif->>FCM: send(fcmTokens, { title, body, data })
+    FCM-->>User: 🔔 "ชาร์จเสร็จแล้ว! 10 kWh / 10,000 LAK"
+    Notif->>Notif: INSERT notification_logs (status=SENT)
+    Notif->>Notif: UPSERT notification_daily_stats
+    Notif->>Notif: emit notification:sent → /admin-stats WS
 ```
 
-### 5.4 Scenario 4: Real-time Status ไปยัง Admin Dashboard
+### 5.5 Scenario 5: Live Charging Status (ใหม่)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant App as Mobile App
+    participant Mobile as Mobile API
+    participant Redis as Redis
+    participant OCPP as OCPP Service
+    participant Station as EV Station
+
+    Note over Station,OCPP: ระหว่างชาร์จ — MeterValues ทุก 60s
+    Station->>OCPP: CALL MeterValues { connectorId, meterValue: [{sampledValue}] }
+    OCPP->>Redis: SET charging:live:PANDA-01:1 { meterWh: 15000, updatedAt } (TTL 8h)
+
+    User->>App: ดูสถานะการชาร์จแบบ Live
+    App->>Mobile: GET /charging-sessions/{id}/live
+    Mobile->>Redis: GET charging:session:{id} → billing snapshot
+    Mobile->>Redis: GET charging:live:PANDA-01:1 → meterWh=15000
+    Mobile->>Redis: GET charger_status:PANDA-01 → status=ONLINE
+    Mobile-->>App: 200 { energyKwh: 5.0, estimatedCost: 5000, chargerOnline: true, ... }
+    App-->>User: ⚡ 5.0 kWh | ~5,000 LAK | 25 นาที
+```
+
+### 5.6 Scenario 6: Charger เปิดใหม่ (Booted) ระหว่างชาร์จ (ใหม่)
 
 ```mermaid
 sequenceDiagram
     participant Station as EV Station
     participant OCPP as OCPP Service
-    participant Redis as Redis (Shared)
-    participant Admin as CSMS Admin
-    actor AdminUser
-
-    Station->>OCPP: CALL StatusNotification<br/>{ connectorId: 0, status: 'Charging' }
-    OCPP->>Redis: SET charger_status:PANDA-01<br/>{ status: 'Charging', updatedAt: '...' } (TTL: 600s)
-
-    AdminUser->>Admin: เปิด Dashboard (ดูสถานะ Charger)
-    Admin->>Admin: GET /api/admin/v1/stations/:id/chargers/live
-    Admin->>Redis: GET charger_status:PANDA-01
-    Redis-->>Admin: { status: 'Charging', isRealTime: true }
-    Admin-->>AdminUser: ✅ "Charging" (อัปเดต Real-time)
-
-    Note over Station,OCPP: เมื่อ Charger ออฟไลน์
-    Station->>OCPP: disconnect
-    OCPP->>Redis: SET charger_status:PANDA-01<br/>{ status: 'OFFLINE', updatedAt: '...' }
-
-    AdminUser->>Admin: GET chargers/live
-    Admin->>Redis: GET charger_status:PANDA-01
-    Redis-->>Admin: { status: 'OFFLINE', isRealTime: true }
-    Admin-->>AdminUser: 🔴 "OFFLINE"
-```
-
-### 5.5 Scenario 5: Admin จัดการ User Account
-
-```mermaid
-sequenceDiagram
-    actor Admin
-    participant CSMS as CSMS Admin
-    participant DB_A as panda_ev_system
     participant MQ as RabbitMQ
     participant Mobile as Mobile API
-    participant DB_M as panda_ev_core
+    participant Redis as Redis
+    participant Notif as Notification Service
+    participant FCM as Firebase FCM
+    actor User
 
-    Note over Admin,DB_M: Admin Users (Backend Staff) — จัดการใน Admin DB เท่านั้น
-    Admin->>CSMS: POST /api/admin/v1/users (สร้าง Admin User)
-    CSMS->>DB_A: INSERT user + userRoles + userGroups
-    CSMS-->>Admin: 201 Created
+    Note over Station: Charger รีสตาร์ตกะทันหัน
+    Station->>OCPP: CALL BootNotification (reconnect)
+    OCPP->>MQ: publish charger.booted { identity: 'PANDA-01' }
 
-    Note over Admin,DB_M: Mobile Users (EV Drivers) — Sync ผ่าน RabbitMQ
-    Note over Mobile,MQ: เมื่อ Mobile User ลงทะเบียน
-    Mobile->>DB_M: INSERT mobileUser (panda_ev_core)
-    Mobile->>MQ: publish PANDA_EV_USER_EVENTS<br/>{ routingKey: 'user.registered', userId, email, ... }
-    MQ->>CSMS: user.registered
-    CSMS->>DB_A: UPSERT mobile_user_profiles<br/>(conflict on mobile_user_id)
+    MQ->>Mobile: charger.booted
+    Mobile->>Redis: GET charging:charger:PANDA-01 → sessionId
+    Mobile->>Redis: GET charging:session:{sessionId} → userId
+    Mobile->>Mobile: UPDATE ChargingSession (FAILED, endedAt=now)
+    Mobile->>Redis: DEL charging:session:{id} + charging:charger:PANDA-01
+    Mobile->>MQ: publish PANDA_EV_NOTIFICATIONS<br/>{ type: 'charger_rebooted', fcmTokens: [...] }
 
-    Admin->>CSMS: GET /api/admin/v1/mobile-users (ดู Mobile Users)
-    CSMS->>DB_A: SELECT mobile_user_profiles
-    CSMS-->>Admin: list of mobile users (read-only mirror)
+    MQ->>Notif: notification.session
+    Notif->>FCM: send push
+    FCM-->>User: 🔴 "Charger รีสตาร์ต เซสชันถูกยกเลิก"
 ```
 
-### 5.6 Scenario 6: Remote Start ล้มเหลว (Timeout/Rejected)
+### 5.7 Scenario 7: Remote Start ล้มเหลว
 
 ```mermaid
 sequenceDiagram
@@ -619,6 +705,7 @@ sequenceDiagram
     participant OCPP as OCPP Service
     participant Station as EV Station
     participant Redis as Redis
+    participant Notif as Notification Service
     participant FCM as Firebase FCM
     actor User
 
@@ -627,23 +714,21 @@ sequenceDiagram
     OCPP->>Redis: SET session:pending:{identity}:{connectorId}
     OCPP->>Station: CALL RemoteStartTransaction
 
-    alt Scenario A: Timeout (15 วินาที)
-        Note over Station: ไม่ตอบสนอง
+    alt Timeout (15 วินาที)
         OCPP->>OCPP: timeout after 15s
         OCPP->>Redis: DEL session:pending:*
-        OCPP->>Redis: DEL charging:session:{sessionId}
-        OCPP->>MQ: publish remote_start.failed<br/>{ reason: 'TIMEOUT', sessionId }
-    else Scenario B: Rejected
+        OCPP->>MQ: remote_start.failed { reason: 'TIMEOUT', sessionId }
+    else Rejected
         Station-->>OCPP: CALLRESULT { status: 'Rejected' }
-        OCPP->>Redis: DEL session:pending:*
-        OCPP->>MQ: publish remote_start.failed<br/>{ reason: 'REJECTED', sessionId }
+        OCPP->>MQ: remote_start.failed { reason: 'REJECTED', sessionId }
     end
 
     MQ->>Mobile: remote_start.failed
     Mobile->>Mobile: UPDATE ChargingSession (FAILED)
-    Mobile->>Redis: DEL charging:session:{sessionId}
-    Mobile->>Redis: DEL charging:charger:{identity}
-    Mobile->>FCM: sendToUser(userId, { type: 'remote_start_failed' })
+    Mobile->>Redis: DEL charging:session:{id} + charging:charger:{identity}
+    Mobile->>MQ: publish PANDA_EV_NOTIFICATIONS { type: 'remote_start_failed' }
+    MQ->>Notif: notification.session
+    Notif->>FCM: send push
     FCM-->>User: 🔴 "ไม่สามารถเริ่มชาร์จได้ กรุณาลองใหม่"
 ```
 
@@ -655,18 +740,14 @@ sequenceDiagram
 
 ```typescript
 // ServiceJwtService — ทุก Service ใช้ร่วมกัน
-// src/common/service-auth/service-jwt.service.ts
-
 class ServiceJwtService {
-  // ลงนาม token 30 วินาที ก่อน publish RabbitMQ
   sign(audience: string): string | null {
     // RS256 private key → JWT
-    // payload: { iss, aud, jti, iat, exp: +30s }
+    // payload: { iss, aud, jti, iat, exp: now+30s }
   }
 
-  // ตรวจสอบ token ขาเข้า
   async verify(token: string): Promise<Payload | null> {
-    // 1. Parse header.payload.signature
+    // 1. Parse JWT header.payload.signature
     // 2. ตรวจสอบ iss มีใน trustedKeys
     // 3. ตรวจสอบ signature ด้วย RSA public key
     // 4. ตรวจสอบ exp (ไม่เกิน 30 วินาที)
@@ -676,56 +757,64 @@ class ServiceJwtService {
 }
 ```
 
-**Trust Matrix:**
+**Trust Matrix (อัปเดตรวม Notification Service):**
 
 | Service | ออก Token เป็น | เชื่อ Token จาก |
 |---|---|---|
-| `admin-api` | `admin-api` | `mobile-api`, `ocpp-csms` |
-| `mobile-api` | `mobile-api` | `admin-api`, `ocpp-csms` |
+| `admin-api` | `admin-api` | `mobile-api`, `ocpp-csms`, `notification-service` |
+| `mobile-api` | `mobile-api` | `admin-api`, `ocpp-csms`, `notification-service` |
 | `ocpp-csms` | `ocpp-csms` | `mobile-api`, `admin-api` |
+| `notification-service` | `notification-service` | `mobile-api`, `admin-api` |
+
+**Key Distribution (generate-service-keys-local.sh):**
+
+```
+keys/ directory ของแต่ละ Service:
+  admin/keys/        → admin.pem, admin.pub, mobile.pub, ocpp.pub, notification.pub
+  mobile/keys/       → mobile.pem, mobile.pub, admin.pub, ocpp.pub, notification.pub
+  ocpp/keys/         → ocpp.pem, ocpp.pub, admin.pub, mobile.pub
+  notification/keys/ → notification.pem, notification.pub, admin.pub, mobile.pub
+```
 
 ### 6.2 User JWT Authentication
 
 ```
 Admin Service:
-  - RS256 (JWT_PRIVATE_KEY + JWT_PUBLIC_KEY) หรือ HS256 fallback (JWT_SECRET)
-  - Access Token: 15 นาที
-  - Refresh Token: 7 วัน (เก็บใน Redis refresh:{userId}:{tokenId})
+  RS256 (JWT_PRIVATE_KEY + JWT_PUBLIC_KEY) หรือ HS256 fallback (JWT_SECRET)
+  Access Token: 15 นาที
+  Refresh Token: 7 วัน (เก็บใน Redis refresh:{userId}:{tokenId})
 
 Mobile Service:
-  - RS256 หรือ HS256 fallback
-  - Access Token: 15 นาที
-  - Refresh Token: 30 วัน
+  RS256 หรือ HS256 fallback
+  Access Token: 15 นาที
+  Refresh Token: 30 วัน
 ```
 
-### 6.3 RBAC (Role-Based Access Control) — Admin Service
+### 6.3 RBAC — Admin Service
 
 ```
 Permission format: {resource}:{action}
-ตัวอย่าง: stations:read, users:create, pricing-tiers:update
+ตัวอย่าง: stations:read, chargers:manage, pricing-tiers:update
 
 Roles:
   super-admin  → ทุก Permission (90)
   admin        → 80 Permission (ยกเว้น roles:*, permissions:*)
   viewer       → 18 Permission (read-only เท่านั้น)
 
-การตรวจสอบ:
-  ทุก request → JwtStrategy.validate() → โหลด permissions จาก DB
-  (ไม่เก็บใน JWT → revoke ทันทีเมื่อเปลี่ยน Role)
+OCPP Commands ใช้ Permission:
+  chargers:read   → GET config, list version, composite schedule
+  chargers:manage → Reset, ChangeAvailability, UpdateFirmware ฯลฯ
 ```
 
-### 6.4 API Key สำหรับ Charger Authentication
+### 6.4 Notification Deduplication + Rate Limiting
 
-```
-Redis Key: charger:apikey:{ocppIdentity}
-ตั้งค่าผ่าน Admin Panel
-OCPP Gateway อ่านเมื่อ OCPP_AUTH_ENABLED=true
+```typescript
+// DedupService — ป้องกัน notification ซ้ำ
+await redis.set(`dedup:${sessionId}:${type}`, '1', 'EX', 86400, 'NX');
+// คืน null = ซ้ำ (suppress), 'OK' = ใหม่ (ส่งได้)
 
-การตรวจสอบ:
-  HTTP Upgrade request → extractBasicAuth(headers)
-  → redis.get(charger:apikey:{identity})
-  → เปรียบเทียบ
-  → ปฏิเสธถ้าไม่ตรง
+// RateLimitService — sliding window
+// ป้องกัน spam notification ต่อ user ต่อประเภท
 ```
 
 ### 6.5 Soft Delete
@@ -736,9 +825,7 @@ await prisma.resource.update({
   where: { id },
   data: { deletedAt: new Date(), updatedById: userId }
 });
-
 // ทุก query กรอง deletedAt: null
-await prisma.resource.findMany({ where: { deletedAt: null } });
 ```
 
 ---
@@ -755,68 +842,59 @@ await prisma.resource.findMany({ where: { deletedAt: null } });
 | CMS content | 30 min | `content:{slug}` | Via RabbitMQ event |
 | App config | 5 min | `app:config:{key}` | On update |
 | Charger live status | 600s | `charger_status:{identity}` | OCPP เขียนใหม่เสมอ |
+| Live meter values | 8h | `charging:live:{id}:{conn}` | MeterValues event |
+| OCPP command result | 90s | `ocpp:cmd:result:{commandId}` | Auto-expire |
+| Notification dedup | 24h | `dedup:{sessionId}:{type}` | Auto-expire |
 
-### 7.2 Database Index Recommendations
+### 7.2 Pre-Aggregated Statistics (Notification Service)
+
+Notification Service ใช้ **No Raw Query Rule** — ไม่มีการ SELECT COUNT/SUM จาก transaction tables:
 
 ```sql
--- OCPP Service (panda_ev_ocpp)
+-- UPSERT อัตโนมัติทุกครั้งที่มี event — ไม่มี full table scan
+INSERT INTO panda_ev_notifications.station_hourly_stats
+  (id, station_id, station_name, hour, sessions_started)
+VALUES (gen_random_uuid(), $1, $2, $3, 1)
+ON CONFLICT (station_id, hour) DO UPDATE
+  SET sessions_started = station_hourly_stats.sessions_started + 1;
+```
+
+Tables ที่ Aggregate:
+- `station_hourly_stats` — sessions, energy, revenue ต่อชั่วโมงต่อสถานี
+- `station_daily_stats` — สรุปรายวันต่อสถานี (avg session, peak concurrent, overstay)
+- `notification_daily_stats` — funnel delivery metrics ต่อ type+channel ต่อวัน
+
+### 7.3 Database Index Recommendations
+
+```sql
+-- OCPP Service
 CREATE INDEX idx_transaction_ocpp_id ON "panda_ev_ocpp"."transactions"(ocpp_transaction_id);
 CREATE INDEX idx_transaction_charger ON "panda_ev_ocpp"."transactions"(charger_id, status);
-CREATE INDEX idx_ocpp_log_identity ON "panda_ev_ocpp"."ocpp_logs"(identity, created_at DESC);
 
--- Mobile Service (panda_ev_core)
+-- Mobile Service
 CREATE INDEX idx_charging_session_user ON "panda_ev_core"."charging_sessions"(user_id, status);
 CREATE INDEX idx_charging_session_ocpp ON "panda_ev_core"."charging_sessions"(ocpp_transaction_id);
 CREATE INDEX idx_wallet_tx_user ON "panda_ev_core"."wallet_transactions"(user_id, created_at DESC);
 
--- Admin Service (panda_ev_system)
+-- Admin Service
 CREATE INDEX idx_charger_identity ON "panda_ev_system"."chargers"(ocpp_identity) WHERE deleted_at IS NULL;
 CREATE INDEX idx_station_pricing ON "panda_ev_system"."station_pricings"(station_id, is_active, priority DESC);
-CREATE INDEX idx_mobile_user_profile ON "panda_ev_system"."mobile_user_profiles"(mobile_user_id);
+
+-- Notification Service (defined in Prisma schema)
+-- notification_logs: (user_id, sent_at), (station_id, sent_at), (status, sent_at)
+-- station_hourly_stats: (station_id, hour) UNIQUE
+-- station_daily_stats: (station_id, date) UNIQUE
+-- notification_daily_stats: (date, type, channel) UNIQUE
 ```
 
-### 7.3 Connection Pooling
+### 7.4 Fire-and-Forget Pattern
 
 ```typescript
-// Prisma + pg Pool (ทุก Service)
-// prisma.service.ts
-new PrismaClient({
-  adapter: new PrismaPg(pool),
-})
-
-// Pool configuration
-const pool = new pg.Pool({
-  max: 20,           // connections สูงสุด
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-```
-
-### 7.4 Rate Limiting
-
-```typescript
-// ควรเพิ่มใน main.ts หรือ Guard
-// Mobile API — ป้องกัน Spam OTP
-app.use('/api/mobile/v1/auth/request-otp', rateLimit({
-  windowMs: 60 * 1000,  // 1 นาที
-  max: 3,               // 3 ครั้ง
-}));
-
-// ป้องกัน brute force login
-app.use('/api/*/auth/login', rateLimit({
-  windowMs: 15 * 60 * 1000,  // 15 นาที
-  max: 10,
-}));
-```
-
-### 7.5 Fire-and-Forget Pattern
-
-```typescript
-// ทุก Service — async ops ที่ไม่ blocking
-// ✅ ถูกต้อง
+// ✅ ถูกต้อง — ไม่บล็อก response
 this.systemDb.syncUser(user).catch(() => null);
 this.fcm.sendToUser(userId, msg).catch(() => null);
-this.auditLog.create({ action, ... }).catch(e => this.logger.error(e));
+this.auditLog.create({ action }).catch(e => this.logger.error(e));
+this.rabbitMQ.publish(QUEUE, msg).catch(() => null);
 
 // ❌ ผิด — บล็อก response
 await this.systemDb.syncUser(user);
@@ -826,19 +904,19 @@ await this.systemDb.syncUser(user);
 
 ## 8. Implementation Checklist
 
-### Priority 1: Critical (ต้องมี)
+### Priority 1: Critical ✅ ครบแล้ว
 
 - [x] OCPP 1.6J WebSocket Gateway (BootNotification, Heartbeat, Status, Start/Stop Transaction)
 - [x] Remote Start/Stop Transaction (await response 15s timeout)
-- [x] Wallet deduction atomic transaction (Prisma $transaction)
+- [x] Wallet deduction atomic transaction (Prisma `$transaction`)
 - [x] Redis billing snapshot (8h TTL)
 - [x] RabbitMQ service-to-service JWT authentication (RS256)
-- [x] Session FAILED on remote_start.failed → FCM notification
+- [x] Session FAILED on `remote_start.failed` → Notification via RabbitMQ
 - [x] Admin RBAC (roles, permissions, groups)
 - [x] Mobile auth (register → OTP → login → refresh → logout)
 - [x] Soft delete everywhere
 
-### Priority 2: High (ควรมี)
+### Priority 2: High ✅ ครบแล้ว
 
 - [x] Parking fee timer (Redis) + overstay billing
 - [x] Unplug fee deduction
@@ -846,100 +924,89 @@ await this.systemDb.syncUser(user);
 - [x] SystemDbService cross-DB reads (Mobile reads Admin DB)
 - [x] Charger live status via Redis (Admin Dashboard)
 - [x] CMS content cache invalidation via RabbitMQ
-- [ ] Dead Letter Queue (DLQ) สำหรับ failed messages
-- [ ] Circuit breaker สำหรับ SystemDbService calls
-- [ ] OCPP Authorize action handler
-- [ ] GetConfiguration / ChangeConfiguration
+- [x] Dead Letter Queue (DLQ) สำหรับ `PANDA_EV_NOTIFICATIONS` (3 retries, exponential backoff)
+- [x] OCPP Authorize action handler
+- [x] GetConfiguration / ChangeConfiguration
+- [x] OCPP Admin Command Bridge (Admin → OCPP via `PANDA_EV_ADMIN_COMMANDS`)
+- [x] Notification Microservice (FCM delivery, dedup, rate-limit, aggregation, WS dashboard)
+- [x] Live charging session API (`GET /charging-sessions/:id/live`)
+- [x] Live charger status per station (`GET /stations/:id/chargers/status`)
+- [x] `charger.offline` + `charger.booted` OCPP event handlers in Mobile
 
-### Priority 3: Medium (ดีถ้ามี)
+### Priority 3: Medium ✅ ครบแล้ว
 
-- [ ] OCPP ChangeAvailability (Enable/Disable connector)
-- [ ] OCPP Reset (Soft/Hard reset charger)
-- [ ] OCPP UnlockConnector
-- [ ] OCPP GetDiagnostics / UpdateFirmware
-- [ ] OCPP ReserveNow / CancelReservation
-- [ ] OCPP SetChargingProfile (Smart Charging)
+- [x] OCPP ChangeAvailability
+- [x] OCPP Reset (Soft/Hard)
+- [x] OCPP UnlockConnector
+- [x] OCPP GetDiagnostics / UpdateFirmware
+- [x] OCPP ReserveNow / CancelReservation
+- [x] OCPP SetChargingProfile / ClearChargingProfile / GetCompositeSchedule
+- [x] OCPP TriggerMessage
+- [x] OCPP DataTransfer
+- [x] OCPP SendLocalList / GetLocalListVersion
 - [ ] Prometheus metrics endpoint
 - [ ] Distributed tracing (OpenTelemetry)
-- [ ] Rate limiting middleware
+- [ ] Circuit breaker สำหรับ SystemDbService calls
 
 ### Priority 4: Nice to Have
 
-- [ ] OCPP 2.0.1 support (15-tuple MeterValues, ISO 15118)
-- [ ] Smart charging scheduler
-- [ ] OCPP Load Management
+- [ ] OCPP 2.0.1 support (ISO 15118, Plug & Charge)
+- [ ] Smart charging scheduler (LoadManagement)
 - [ ] Multi-tenancy support
 - [ ] Real-time Mobile WebSocket (แทน FCM polling)
 - [ ] GraphQL API สำหรับ Admin Dashboard
+- [ ] Notification delivery webhook (DELIVERED status จาก FCM)
+- [ ] Promotional discount engine
 
 ---
 
-## 9. OCPP Action Gap Analysis
+## 9. OCPP Action — Full Implementation Status
 
-### 9.1 Actions ที่ Implement แล้ว
+### 9.1 Station → CSMS (Inbound)
 
-| Action | ทิศทาง | Status |
-|---|---|---|
-| `BootNotification` | Station → OCPP | ✅ Done |
-| `StatusNotification` | Station → OCPP | ✅ Done |
-| `Heartbeat` | Station → OCPP | ✅ Done |
-| `StartTransaction` | Station → OCPP | ✅ Done |
-| `StopTransaction` | Station → OCPP | ✅ Done |
-| `MeterValues` | Station → OCPP | ✅ Done |
-| `RemoteStartTransaction` | OCPP → Station | ✅ Done (await 15s) |
-| `RemoteStopTransaction` | OCPP → Station | ✅ Done (fire-and-forget) |
-
-### 9.2 Actions ที่ขาดสำหรับ OCPP 1.6 สมบูรณ์
-
-| Action | ทิศทาง | ความสำคัญ | วัตถุประสงค์ |
+| Action | Status | Handler | หมายเหตุ |
 |---|---|---|---|
-| `Authorize` | Station → OCPP | 🔴 Critical | ตรวจสอบ RFID idTag ก่อนชาร์จ |
-| `ChangeAvailability` | OCPP → Station | 🟠 High | เปิด/ปิด Connector จาก Admin |
-| `ChangeConfiguration` | OCPP → Station | 🟠 High | เปลี่ยนค่า Config ของ Charger |
-| `GetConfiguration` | OCPP → Station | 🟠 High | อ่านค่า Config ของ Charger |
-| `ClearCache` | OCPP → Station | 🟠 High | ล้าง Local Authorization Cache |
-| `Reset` | OCPP → Station | 🟠 High | Restart Charger (Soft/Hard) |
-| `UnlockConnector` | OCPP → Station | 🟡 Medium | ปลดล็อก Connector จากระยะไกล |
-| `DataTransfer` | Both | 🟡 Medium | ส่งข้อมูล Custom ระหว่าง CSMS-Station |
-| `GetDiagnostics` | OCPP → Station | 🟡 Medium | ดึง Log จาก Charger |
-| `DiagnosticsStatusNotification` | Station → OCPP | 🟡 Medium | รายงานสถานะการส่ง Diagnostics |
-| `UpdateFirmware` | OCPP → Station | 🟡 Medium | อัปเดต Firmware ผ่านระยะไกล |
-| `FirmwareStatusNotification` | Station → OCPP | 🟡 Medium | รายงานสถานะการอัปเดต Firmware |
-| `TriggerMessage` | OCPP → Station | 🟡 Medium | สั่งให้ Station ส่ง Message ใดๆ |
-| `ReserveNow` | OCPP → Station | 🟢 Low | จอง Connector ล่วงหน้า |
-| `CancelReservation` | OCPP → Station | 🟢 Low | ยกเลิกการจอง |
-| `SendLocalList` | OCPP → Station | 🟢 Low | ส่ง RFID whitelist |
-| `GetLocalListVersion` | OCPP → Station | 🟢 Low | ดูเวอร์ชัน Local List |
-| `SetChargingProfile` | OCPP → Station | 🟢 Low | กำหนด Smart Charging Profile |
-| `ClearChargingProfile` | OCPP → Station | 🟢 Low | ล้าง Charging Profile |
-| `GetCompositeSchedule` | OCPP → Station | 🟢 Low | ดู Charging Schedule |
+| `BootNotification` | ✅ Done | `handleBootNotification()` | |
+| `StatusNotification` | ✅ Done | `handleStatusNotification()` | connectorId=0 และ >0 |
+| `Heartbeat` | ✅ Done | `handleHeartbeat()` | |
+| `Authorize` | ✅ Done | `handleAuthorize()` | ตรวจสอบ idTag vs pending session |
+| `StartTransaction` | ✅ Done | `handleStartTransaction()` | links pending session |
+| `StopTransaction` | ✅ Done | `handleStopTransaction()` | |
+| `MeterValues` | ✅ Done | `handleMeterValues()` | normalise kWh → Wh |
+| `DataTransfer` | ✅ Done | `handleDataTransfer()` | bidirectional |
+| `DiagnosticsStatusNotification` | ✅ Done | `handleDiagnosticsStatus()` | |
+| `FirmwareStatusNotification` | ✅ Done | `handleFirmwareStatus()` | |
 
-### 9.3 ข้อแนะนำเร่งด่วน
+### 9.2 CSMS → Station (Outbound)
 
-```typescript
-// 1. Authorize — สำคัญมากสำหรับ RFID authentication
-// เพิ่มใน ocpp.service.ts
-async handleAuthorize(identity: string, payload: { idTag: string }) {
-  // ตรวจสอบ idTag ใน whitelist
-  // ตรวจสอบ idTag ใน pending session (สำหรับ Mobile-initiated)
-  const pending = await this.redis.getJSON(`session:pending:${identity}:*`);
-  return pending?.idTag === payload.idTag
-    ? { idTagInfo: { status: 'Accepted' } }
-    : { idTagInfo: { status: 'Invalid' } };
-}
+| Action | Status | Method | Trigger |
+|---|---|---|---|
+| `RemoteStartTransaction` | ✅ Done | `sendRemoteStart()` | Mobile session.start |
+| `RemoteStopTransaction` | ✅ Done | `sendRemoteStop()` | Mobile session.stop |
+| `ChangeAvailability` | ✅ Done | `sendChangeAvailability()` | Admin command |
+| `Reset` | ✅ Done | `sendReset()` | Admin command |
+| `ClearCache` | ✅ Done | `sendClearCache()` | Admin command |
+| `UnlockConnector` | ✅ Done | `sendUnlockConnector()` | Admin command |
+| `GetConfiguration` | ✅ Done | `sendGetConfiguration()` | Admin command |
+| `ChangeConfiguration` | ✅ Done | `sendChangeConfiguration()` | Admin command |
+| `GetDiagnostics` | ✅ Done | `sendGetDiagnostics()` | Admin command |
+| `UpdateFirmware` | ✅ Done | `sendUpdateFirmware()` | Admin command |
+| `TriggerMessage` | ✅ Done | `sendTriggerMessage()` | Admin command |
+| `ReserveNow` | ✅ Done | `sendReserveNow()` | Admin command |
+| `CancelReservation` | ✅ Done | `sendCancelReservation()` | Admin command |
+| `SendLocalList` | ✅ Done | `sendLocalList()` | Admin command |
+| `GetLocalListVersion` | ✅ Done | `sendGetLocalListVersion()` | Admin command |
+| `SetChargingProfile` | ✅ Done | `sendSetChargingProfile()` | Admin command |
+| `ClearChargingProfile` | ✅ Done | `sendClearChargingProfile()` | Admin command |
+| `GetCompositeSchedule` | ✅ Done | `sendGetCompositeSchedule()` | Admin command |
+| `DataTransfer` | ✅ Done | via gateway | Admin command |
 
-// 2. ChangeAvailability — Admin สั่งปิด/เปิด Connector
-// เพิ่ม endpoint: POST /admin/v1/chargers/:id/availability
-async changeAvailability(identity: string, connectorId: number, type: 'Operative' | 'Inoperative') {
-  return this.gateway.sendCommand(identity, 'ChangeAvailability', { connectorId, type });
-}
+### 9.3 สรุป
 
-// 3. Reset — Admin restart charger
-// POST /admin/v1/chargers/:id/reset
-async resetCharger(identity: string, type: 'Soft' | 'Hard') {
-  return this.gateway.sendCommand(identity, 'Reset', { type });
-}
-```
+> **OCPP 1.6J Implementation: 27/27 Actions ✅ สมบูรณ์**
+>
+> Inbound handlers: 10 actions
+> Outbound commands: 19 actions (2 session-initiated + 17 admin-initiated)
 
 ---
 
@@ -951,37 +1018,47 @@ async resetCharger(identity: string, type: 'Soft' | 'Hard') {
 Google Cloud Platform
 ├── GKE (Google Kubernetes Engine)
 │   ├── Namespace: panda-ev
-│   │   ├── Deployment: admin-service (3 replicas)
-│   │   ├── Deployment: mobile-service (3 replicas)
-│   │   ├── Deployment: ocpp-service (2 replicas + sticky session)
-│   │   └── Deployment: api-key-service (1 replica)
-│   └── Services + Ingress (HTTPS termination)
+│   │   ├── Deployment: admin-service        (3 replicas, Port 3001)
+│   │   ├── Deployment: mobile-service       (3 replicas, Port 4001)
+│   │   ├── Deployment: ocpp-service         (2 replicas + sticky session, Port 4002)
+│   │   ├── Deployment: notification-service (2 replicas, Port 5001)
+│   │   └── Deployment: api-key-service      (1 replica)
+│   └── Services + Ingress (HTTPS termination + WSS for OCPP)
 ├── Cloud SQL (PostgreSQL)
-│   ├── Instance: panda-ev-db (Private IP)
-│   ├── DB: panda_ev_system (Admin)
-│   ├── DB: panda_ev_core (Mobile)
-│   └── DB: panda_ev_ocpp (OCPP)
+│   ├── DB: panda_ev_system   (Admin)
+│   ├── DB: panda_ev_core     (Mobile)
+│   ├── DB: panda_ev_ocpp     (OCPP)
+│   └── DB: panda_ev_notifications (Notification)
 ├── Memorystore (Redis)
-│   └── Instance: panda-ev-redis (Private IP)
+│   └── Instance: panda-ev-redis (Private IP, shared across services)
 ├── Cloud AMQP / Managed RabbitMQ
-│   └── Instance: panda-ev-mq
-├── Secret Manager
-│   ├── JWT Private/Public Keys (RS256)
-│   ├── Service JWT Keys (RS256)
-│   └── Database credentials
-└── Cloud Monitoring + Logging
+│   └── Queues: PANDA_EV_QUEUE, PANDA_EV_CSMS_COMMANDS,
+│               PANDA_EV_ADMIN_COMMANDS, PANDA_EV_NOTIFICATIONS,
+│               PANDA_EV_NOTIFICATIONS_DLQ, PANDA_EV_USER_EVENTS,
+│               PANDA_EV_SYSTEM_EVENTS
+├── Firebase Cloud Messaging
+│   └── Project: pandaev-bd994
+└── Secret Manager
+    ├── JWT Private/Public Keys (RS256) per service
+    ├── Service JWT Keys (RS256 inter-service)
+    ├── Firebase Service Account JSON
+    └── Database credentials
 ```
 
-### 10.2 Kubernetes Secrets (create-secret.sh)
+### 10.2 Kubernetes Secrets
 
 ```bash
-# สร้าง K8s Secret สำหรับ Admin Service
-kubectl create secret generic panda-system-api-secrets \
-  --from-literal=DATABASE_URL="..." \
-  --from-literal=JWT_PRIVATE_KEY="$(base64 < keys/admin.pem | tr -d '\n')" \
-  --from-literal=JWT_PUBLIC_KEY="$(base64 < keys/admin.pub | tr -d '\n')" \
-  --from-literal=SERVICE_JWT_PRIVATE_KEY="$(base64 < keys/admin.pem | tr -d '\n')" \
-  --from-literal=TRUSTED_SERVICE_PUBLIC_KEYS='[{"iss":"mobile-api","key":"..."},{"iss":"ocpp-csms","key":"..."}]' \
+# Notification Service
+kubectl create secret generic panda-notification-secrets \
+  --from-literal=DATABASE_URL="postgresql://..." \
+  --from-literal=REDIS_URL="redis://..." \
+  --from-literal=RABBITMQ_URL="amqp://..." \
+  --from-literal=SERVICE_NAME="notification-service" \
+  --from-literal=SERVICE_JWT_PRIVATE_KEY="$(base64 < keys/notification.pem | tr -d '\n')" \
+  --from-literal=TRUSTED_SERVICE_PUBLIC_KEYS='[{"iss":"mobile-api","key":"..."},{"iss":"admin-api","key":"..."}]' \
+  --from-literal=FIREBASE_PROJECT_ID="pandaev-bd994" \
+  --from-literal=FIREBASE_CLIENT_EMAIL="firebase-adminsdk@..." \
+  --from-literal=FIREBASE_PRIVATE_KEY="..." \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -989,56 +1066,55 @@ kubectl create secret generic panda-system-api-secrets \
 
 ```yaml
 # OCPP Service ต้องการ Sticky Session เพราะ Charger เชื่อมต่อ WebSocket ถาวร
-# k8s/ocpp-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: ocpp-service
   annotations:
-    # Google Cloud Load Balancer — Session Affinity
     cloud.google.com/backend-config: '{"default": "ocpp-backend-config"}'
 spec:
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:
-      timeoutSeconds: 86400  # 24 ชั่วโมง
+      timeoutSeconds: 86400
 ```
 
 ### 10.4 Monitoring และ Alerting
 
-```yaml
-# แนะนำใช้ Google Cloud Monitoring + Prometheus
-
+```
 Metrics ที่ควร Monitor:
-  - OCPP: จำนวน Charger ที่ Online/Offline
-  - OCPP: WebSocket connection count
-  - RabbitMQ: Queue depth (DLQ alert ถ้า > 0)
-  - Redis: Memory usage, key expiry rate
-  - Billing: จำนวน transaction ต่อชั่วโมง
-  - Error rate: 5xx responses per service
+  OCPP:         จำนวน Charger Online/Offline, WebSocket connection count
+  Mobile:       Charging sessions active, wallet transaction rate
+  Notification: Queue depth (PANDA_EV_NOTIFICATIONS), DLQ count, FCM success rate
+  Redis:        Memory usage, key expiry rate
+  All services: 5xx error rate, P95 latency
 
 Alerts:
   - Charger offline > 10 นาที → Slack notification
-  - DLQ message count > 0 → PagerDuty
-  - Redis memory > 80% → Scale up
-  - DB connection pool exhausted → Emergency
+  - PANDA_EV_NOTIFICATIONS_DLQ count > 0 → PagerDuty (notification failed permanently)
+  - Redis memory > 80% → Scale up Memorystore
+  - DB connection pool exhausted → Emergency alert
+  - FCM send success rate < 90% → Firebase quota check
 ```
 
 ---
 
-## สรุป Gap Analysis
+## สรุปสถาปัตยกรรม
 
-| หัวข้อ | สถานะปัจจุบัน | สิ่งที่ขาด |
+| หัวข้อ | สถานะปัจจุบัน | หมายเหตุ |
 |---|---|---|
-| OCPP Actions | 8/27 actions | 19 actions ยังขาด (Authorize, Reset, ChangeAvailability สำคัญที่สุด) |
-| Service Communication | ✅ RabbitMQ + Redis | ❌ DLQ, Circuit Breaker |
-| Security | ✅ RS256 JWT service-to-service | ❌ mTLS, Rate Limiting middleware |
-| Billing | ✅ Energy + Unplug + Parking | ❌ Promotional discounts, Split payment |
-| Monitoring | ❌ ยังไม่มี | Prometheus + Grafana + Alert rules |
-| OCPP Smart Charging | ❌ ไม่มี | SetChargingProfile (Priority 4) |
-| Reservation | ❌ ไม่มี | ReserveNow / CancelReservation |
+| OCPP 1.6J Actions | ✅ **27/27 สมบูรณ์** | Inbound 10 + Outbound 19 |
+| Admin OCPP Commands | ✅ **17 commands** | ผ่าน `PANDA_EV_ADMIN_COMMANDS` queue |
+| Notification Microservice | ✅ **พร้อมใช้งาน** | FCM, DLQ retry, dedup, aggregation, WS dashboard |
+| Service Communication | ✅ RabbitMQ + Redis + JWT | 6 queues, RS256 inter-service auth |
+| Billing | ✅ Energy + Unplug + Parking | Atomic wallet deduction |
+| Live Data APIs | ✅ Session live + Charger status | 2 new REST endpoints ใน Mobile |
+| Pre-aggregated Stats | ✅ | Hourly + Daily per station + Notification funnel |
+| Security | ✅ RS256 JWT ทุก service | 4-service trust matrix |
+| Monitoring | ⏳ ยังไม่มี | Prometheus + Grafana เป็น next step |
+| OCPP Smart Charging | ✅ SetChargingProfile | ยังไม่มี scheduler |
 
 ---
 
 *เอกสารนี้สร้างจากการวิเคราะห์ Source Code จริง ณ วันที่ 2026-03-22*
-*อ้างอิง: panda-ev-ocpp, panda-ev-csms-system-admin, panda-ev-client-mobile*
+*อ้างอิง: panda-ev-ocpp · panda-ev-csms-system-admin · panda-ev-client-mobile · panda-ev-notification*
