@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Prisma generated client
+generated/
+
+# Keys / secrets
+keys/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+
+chat-history/
+
+# Misc
+*.txt

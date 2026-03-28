@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import * as amqp from 'amqplib';
+import { ServiceJwtService } from '../../common/service-auth/service-jwt.service';
 
 @Injectable()
 export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
@@ -9,6 +10,8 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private consumerChannel: amqp.Channel | null = null;
   private isConnectedFlag = false;
 
+  constructor(private readonly serviceJwt: ServiceJwtService) {}
+
   private readonly NOTIFICATIONS_QUEUE =
     process.env.RABBITMQ_NOTIFICATIONS_QUEUE ?? 'PANDA_EV_NOTIFICATIONS';
   private readonly NOTIFICATIONS_DLQ =
@@ -16,11 +19,15 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private readonly NOTIFICATIONS_DLX =
     process.env.RABBITMQ_NOTIFICATIONS_DLX ?? 'PANDA_EV_NOTIFICATIONS_DLX';
 
+  private reconnectAttempt = 0;
+  private isDestroyed = false;
+
   async onModuleInit() {
     await this.connect();
   }
 
   async onModuleDestroy() {
+    this.isDestroyed = true;
     await this.disconnect();
   }
 
@@ -44,6 +51,12 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       this.connection.on('close', () => {
         this.logger.warn('RabbitMQ connection closed');
         this.isConnectedFlag = false;
+        this.connection = null;
+        this.channel = null;
+        this.consumerChannel = null;
+        if (!this.isDestroyed) {
+          void this.scheduleReconnect();
+        }
       });
 
       await this.setupDlxAndQueues();
@@ -53,7 +66,17 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.warn(`RabbitMQ connection failed (soft-fail): ${(error as Error).message}`);
       this.isConnectedFlag = false;
+      if (!this.isDestroyed) {
+        void this.scheduleReconnect();
+      }
     }
+  }
+
+  private async scheduleReconnect(): Promise<void> {
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempt), 30_000);
+    this.reconnectAttempt++;
+    this.logger.warn(`RabbitMQ reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`);
+    setTimeout(() => { void this.connect(); }, delay);
   }
 
   private async setupDlxAndQueues(): Promise<void> {
@@ -164,8 +187,18 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
 
     try {
       await this.consumerChannel.assertQueue(queue, { durable: true });
+      await this.consumerChannel.prefetch(10);
       await this.consumerChannel.consume(queue, async (msg) => {
         if (!msg) return;
+
+        // Verify service-to-service JWT
+        const rawToken = msg.properties?.headers?.['x-service-token'] as string | undefined;
+        const servicePayload = await this.serviceJwt.verify(rawToken);
+        if (!servicePayload) {
+          this.logger.warn(`Rejected unauthenticated message from queue "${queue}" — discarding`);
+          this.consumerChannel?.nack(msg, false, false);
+          return;
+        }
 
         try {
           const content = JSON.parse(msg.content.toString()) as Record<string, unknown>;
@@ -179,7 +212,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
         }
       });
 
-      this.logger.log(`Consuming from queue: ${queue}`);
+      this.logger.log(`Consuming from queue (with service auth): ${queue}`);
     } catch (error) {
       this.logger.error(`Failed to set up consumer for ${queue}: ${(error as Error).message}`);
     }
@@ -202,6 +235,15 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.consumerChannel.consume(queue, async (msg) => {
         if (!msg) return;
+
+        // Verify service-to-service JWT
+        const rawToken = msg.properties?.headers?.['x-service-token'] as string | undefined;
+        const servicePayload = await this.serviceJwt.verify(rawToken);
+        if (!servicePayload) {
+          this.logger.warn(`Rejected unauthenticated message from queue "${queue}" — discarding`);
+          this.consumerChannel?.nack(msg, false, false);
+          return;
+        }
 
         let content: Record<string, unknown>;
         try {

@@ -15,7 +15,12 @@ export class PrismaService
       throw new Error('DATABASE_URL environment variable is not defined');
     }
 
-    const pool = new Pool({ connectionString });
+    const pool = new Pool({
+      connectionString,
+      max: 20,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+    });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const adapter = new PrismaPg(pool as any);
     super({ adapter });

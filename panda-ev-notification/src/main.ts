@@ -5,6 +5,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { RedisService } from './configs/redis/redis.service';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 
@@ -21,7 +22,7 @@ async function bootstrap() {
         transformOptions: { enableImplicitConversion: true },
       }),
     );
-    app.useGlobalInterceptors(new ResponseInterceptor());
+    app.useGlobalInterceptors(new TimeoutInterceptor(), new ResponseInterceptor());
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.setGlobalPrefix('api/notification', { exclude: ['/', 'health'] });
     app.enableCors({ origin: '*', methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS', credentials: true });

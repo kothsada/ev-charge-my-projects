@@ -98,6 +98,8 @@ All RabbitMQ messages are signed with RS256 `x-service-token` headers. Consumers
 | `PANDA_EV_NOTIFICATIONS_DLQ` | Notification (dead-letter) | Failed messages after 3 retries (5s/30s/120s backoff) |
 | `PANDA_EV_USER_EVENTS` | Mobile → Admin | user registration events (admin mirrors user profiles) |
 | `PANDA_EV_SYSTEM_EVENTS` | Admin → Mobile | `{ routingKey: 'content.invalidate', slug }` for Redis cache invalidation |
+| `PANDA_EV_ADMIN_COMMANDS` | Admin → OCPP | `{ action, commandId, ocppIdentity, ... }` — remote OCPP commands; result written to Redis `ocpp:cmd:result:{commandId}` (90s TTL) |
+| `PANDA_EV_CHARGER_SYNC` | Admin → OCPP | `charger.provisioned\|updated\|decommissioned`, `connector.provisioned\|updated\|decommissioned` — keeps `panda_ev_ocpp.chargers` in sync with admin DB |
 | `message.created` | Chat → Admin | consumed by Admin notification module for push notifications |
 
 ### Service-to-Service Security (RS256 JWT)
@@ -160,7 +162,9 @@ Charge points connect to `ws://<host>/ocpp/<chargeBoxIdentity>` with subprotocol
 
 **Soft delete**: Never hard-delete. Set `deletedAt: new Date()`. All queries filter `deletedAt: null`.
 
-**Timezone**: All response dates convert to Asia/Vientiane (UTC+7) via `TimezoneInterceptor`.
+**Timezone**: All response dates convert to Asia/Vientiane (UTC+7) via `TimezoneInterceptor`. Date helper rule (OCPP service `src/common/helpers/date.helper.ts`): OCPP protocol fields and RabbitMQ/Redis payloads use Bangkok time (`nowBangkokIso()`); Prisma/PostgreSQL stores UTC `Date` objects — convert only when serialising to JSON.
+
+**Energy units**: All internal energy values are stored and processed in **Wh (integer)**. `handleMeterValues` normalises charger readings on ingestion (kWh × 1000 → Wh). Billing uses `energyKwh = (meterStop − meterStart) / 1000`.
 
 **i18n**: Custom `AsyncLocalStorage`-based (not `@nestjs/i18n`). Use helpers from `src/common/i18n/`:
 - `t('key')` — for return values / data payloads

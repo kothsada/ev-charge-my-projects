@@ -56,7 +56,17 @@ export class RedisService implements OnModuleDestroy {
   async getJSON<T>(key: string): Promise<T | null> {
     const raw = await this.get(key);
     if (!raw) return null;
-    return JSON.parse(raw) as T;
+    try {
+      return JSON.parse(raw) as T;
+    } catch (err) {
+      this.logger.error(`Redis getJSON: failed to parse key "${key}": ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  async evalLua(script: string, keys: string[], args: string[]): Promise<number> {
+    const result = await this.client.eval(script, keys.length, ...keys, ...args);
+    return result as number;
   }
 
   async incr(key: string): Promise<number> {

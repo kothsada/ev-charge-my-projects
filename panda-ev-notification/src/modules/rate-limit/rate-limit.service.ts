@@ -26,13 +26,21 @@ export class RateLimitService {
 
   private async checkWindow(key: string, max: number, windowSec: number, now: number): Promise<boolean> {
     const windowMs = windowSec * 1000;
-    const pipe = this.redis.pipeline();
-    pipe.zremrangebyscore(key, 0, now - windowMs);
-    pipe.zcard(key);
-    pipe.zadd(key, now, `${now}:${Math.random()}`);
-    pipe.expire(key, windowSec);
-    const results = await pipe.exec() as [Error | null, unknown][];
-    const count = results[1][1] as number;
-    return count < max;
+    const luaScript = `
+      local key = KEYS[1]
+      local now = tonumber(ARGV[1])
+      local window = tonumber(ARGV[2])
+      local max = tonumber(ARGV[3])
+      redis.call('zremrangebyscore', key, 0, now - window)
+      local count = redis.call('zcard', key)
+      if count < max then
+        redis.call('zadd', key, now, now .. ':' .. math.random())
+        redis.call('expire', key, math.ceil(window/1000))
+        return 1
+      end
+      return 0
+    `;
+    const result = await this.redis.evalLua(luaScript, [key], [String(now), String(windowMs), String(max)]);
+    return result === 1;
   }
 }
