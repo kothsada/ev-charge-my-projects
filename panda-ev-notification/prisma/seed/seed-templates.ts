@@ -9,6 +9,18 @@ const adapter = new PrismaPg(pool as any);
 const prisma = new PrismaClient({ adapter });
 
 const templates = [
+  // ── Session events (published by Mobile API → PANDA_EV_NOTIFICATIONS) ──────
+  {
+    slug: 'session_started',
+    channel: 'FCM' as const,
+    priority: 'NORMAL' as const,
+    titleEn: 'Charging Started',
+    titleLo: 'ເລີ່ມສາກໄຟແລ້ວ',
+    titleZh: '充电已开始',
+    bodyEn: 'Your charging session has started. We\'ll notify you when complete.',
+    bodyLo: 'ການສາກໄຟຂອງທ່ານເລີ່ມຕົ້ນແລ້ວ. ພວກເຮົາຈະແຈ້ງເຕືອນທ່ານເມື່ອສໍາເລັດ.',
+    bodyZh: '您的充电会话已开始。充电完成后我们将通知您。',
+  },
   {
     slug: 'charging_complete',
     channel: 'BOTH' as const,
@@ -94,7 +106,7 @@ const templates = [
     titleLo: 'ເລີ່ມສາກໄຟລົ້ມເຫລວ',
     titleZh: '启动充电失败',
     bodyEn: 'Unable to start charging at {chargerName}. Please try again or contact support.',
-    bodyLo: 'ບໍ່ສາມາດເລີ່ມສາກໄຟທີ່ {chargerName}. ກະລຸນາລອງໃໝ່ຫຼືຕິດຕໍ່ຝ່າຍສຸພາບ.',
+    bodyLo: 'ບໍ່ສາມາດເລີ່ມສາກໄຟທີ່ {chargerName}. ກະລຸນາລອງໃໝ່ຫຼືຕິດຕໍ່ຝ່າຍ Support.',
     bodyZh: '无法在{chargerName}启动充电。请重试或联系客服。',
   },
   {
@@ -119,6 +131,75 @@ const templates = [
     bodyLo: 'ເຄື່ອງສາກໄຟ {chargerName} ໄດ້ຣີສຕາດ. ເຊດຊັ່ນຂອງທ່ານອາດຈະຖືກຂັດຂວາງ.',
     bodyZh: '充电桩{chargerName}已重启。您的充电会话可能已中断。',
   },
+  // ── OCPP critical alerts (published by OCPP Service → PANDA_EV_NOTIFICATIONS) ─
+  {
+    slug: 'charger_fault',
+    channel: 'FCM' as const,
+    priority: 'HIGH' as const,
+    titleEn: 'Charger Fault Detected',
+    titleLo: 'ກວດພົບຄວາມຜິດພາດຂອງເຄື່ອງສາກ',
+    titleZh: '检测到充电桩故障',
+    bodyEn: 'Charger {chargerName} has reported a fault: {errorCode}. An engineer has been notified.',
+    bodyLo: 'ເຄື່ອງສາກ {chargerName} ລາຍງານຄວາມຜິດພາດ: {errorCode}. ວິຊາກອນໄດ້ຮັບແຈ້ງເຕືອນແລ້ວ.',
+    bodyZh: '充电桩{chargerName}报告故障：{errorCode}。工程师已收到通知。',
+  },
+  {
+    slug: 'charger_unknown_boot',
+    channel: 'FCM' as const,
+    priority: 'HIGH' as const,
+    titleEn: 'Unknown Charger Connected',
+    titleLo: 'ເຄື່ອງສາກທີ່ບໍ່ຮູ້ຈັກເຊື່ອມຕໍ່',
+    titleZh: '未知充电桩连接',
+    bodyEn: 'An unrecognized charger ({identity}) attempted to connect. Please verify.',
+    bodyLo: 'ເຄື່ອງສາກທີ່ບໍ່ຮູ້ຈັກ ({identity}) ພະຍາຍາມເຊື່ອມຕໍ່. ກະລຸນາກວດສອບ.',
+    bodyZh: '未知充电桩（{identity}）尝试连接。请核实。',
+  },
+  // ── Admin-triggered events (published by Admin → PANDA_EV_NOTIFICATIONS) ──
+  {
+    slug: 'welcome',
+    channel: 'FCM' as const,
+    priority: 'NORMAL' as const,
+    titleEn: 'Welcome to Panda EV',
+    titleLo: 'ຍິນດີຕ້ອນຮັບສູ່ Panda EV',
+    titleZh: '欢迎加入 Panda EV',
+    bodyEn: 'Your account is ready. Start charging smarter with Panda EV.',
+    bodyLo: 'ບັນຊີຂອງທ່ານພ້ອມແລ້ວ. ເລີ່ມສາກໄຟຢ່າງສະຫຼາດກວ່າດ້ວຍ Panda EV.',
+    bodyZh: '您的账户已准备好。开始使用 Panda EV 智能充电。',
+  },
+  {
+    slug: 'low_balance_warning',
+    channel: 'FCM' as const,
+    priority: 'HIGH' as const,
+    titleEn: 'Low Wallet Balance',
+    titleLo: 'ຍອດກະເປົາເງິນຕໍ່າ',
+    titleZh: '钱包余额不足',
+    bodyEn: 'Your wallet balance is {balance} LAK. Top up to continue charging.',
+    bodyLo: 'ຍອດກະເປົາເງິນຂອງທ່ານ {balance} ກີບ. ເຕີມເງິນເພື່ອສືບຕໍ່ສາກໄຟ.',
+    bodyZh: '您的钱包余额为{balance}基普。请充值以继续充电。',
+  },
+  {
+    slug: 'pricing_updated',
+    channel: 'BOTH' as const,
+    priority: 'NORMAL' as const,
+    titleEn: 'Pricing Updated',
+    titleLo: 'ລາຄາອັບເດດແລ້ວ',
+    titleZh: '价格已更新',
+    bodyEn: 'Charging rates at {stationName} have been updated. New rate: {rate} LAK/kWh.',
+    bodyLo: 'ອັດຕາສາກໄຟທີ່ {stationName} ໄດ້ຮັບການອັບເດດ. ອັດຕາໃໝ່: {rate} ກີບ/kWh.',
+    bodyZh: '{stationName}的充电费率已更新。新费率：{rate}基普/度。',
+  },
+  {
+    slug: 'station_maintenance',
+    channel: 'BOTH' as const,
+    priority: 'NORMAL' as const,
+    titleEn: 'Station Under Maintenance',
+    titleLo: 'ສະຖານີກໍາລັງຊ່ອມແຊມ',
+    titleZh: '充电站正在维护',
+    bodyEn: '{stationName} is temporarily closed for maintenance until {date}.',
+    bodyLo: '{stationName} ປິດຊົ່ວຄາວເພື່ອຊ່ອມແຊມຈົນຮອດ {date}.',
+    bodyZh: '{stationName}因维护暂时关闭，预计{date}恢复。',
+  },
+  // ── System ─────────────────────────────────────────────────────────────────
   {
     slug: 'system_maintenance',
     channel: 'BOTH' as const,

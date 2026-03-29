@@ -195,7 +195,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
         const rawToken = msg.properties?.headers?.['x-service-token'] as string | undefined;
         const servicePayload = await this.serviceJwt.verify(rawToken);
         if (!servicePayload) {
-          this.logger.warn(`Rejected unauthenticated message from queue "${queue}" — discarding`);
+          this.logger.warn(`Kothsada Rejected unauthenticated message from queue "${queue}" — discarding`);
           this.consumerChannel?.nack(msg, false, false);
           return;
         }

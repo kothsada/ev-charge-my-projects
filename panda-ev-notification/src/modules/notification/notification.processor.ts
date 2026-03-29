@@ -1,11 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FcmService } from '../fcm/fcm.service';
 import { PrismaService } from '../../configs/prisma/prisma.service';
+import { RabbitMQService } from '../../configs/rabbitmq/rabbitmq.service';
 import { DedupService } from '../dedup/dedup.service';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
 import { AggregationService } from '../aggregation/aggregation.service';
 import { AdminStatsGateway } from '../websocket/admin-stats.gateway';
 import { Prisma } from '../../../generated/prisma/client';
+
+// Stale token feedback goes here; Mobile API consumes and deletes from userDevice table
+const FCM_CLEANUP_QUEUE =
+  process.env.RABBITMQ_FCM_CLEANUP_QUEUE ?? 'PANDA_EV_FCM_CLEANUP';
 
 export interface ProcessNotificationDto {
   userId: string;
@@ -35,6 +40,7 @@ export class NotificationProcessor {
   constructor(
     private readonly fcm: FcmService,
     private readonly prisma: PrismaService,
+    private readonly rabbitMQ: RabbitMQService,
     private readonly dedup: DedupService,
     private readonly rateLimit: RateLimitService,
     private readonly aggregation: AggregationService,
@@ -85,6 +91,16 @@ export class NotificationProcessor {
       status = 'SENT';
     } else if (result?.sent === 0) {
       status = 'FAILED';
+    }
+
+    // Publish stale tokens back to Mobile API for cleanup from userDevice table
+    if (result && result.staleTokens.length > 0) {
+      await this.rabbitMQ
+        .publish(FCM_CLEANUP_QUEUE, {
+          routingKey: 'device.token_stale',
+          fcmTokens: result.staleTokens,
+        })
+        .catch(() => null);
     }
 
     // 4. Log to DB
