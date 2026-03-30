@@ -9,7 +9,7 @@ This monorepo contains 5 services for a Panda EV (electric vehicle) charging pla
 | Service | Port | Purpose |
 |---------|------|---------|
 | `panda-ev-ocpp/` | 4002 | OCPP 1.6J CSMS — WebSocket server handling charger protocol |
-| `panda-ev-csms-system-admin/` | 3001 | Admin backend — IAM, stations, pricing, CMS |
+| `panda-ev-csms-system-admin/` | 4000 | Admin backend — IAM, stations, pricing, CMS |
 | `panda-ev-client-mobile/` | 4001 | Mobile app backend — auth, wallet, charging sessions |
 | `panda-ev-notification/` | 5001 | Notification microservice — FCM push, stats aggregation, admin WS dashboard |
 | `ocpp-virtual-charge-point/` | N/A | OCPP simulator for testing (1.6, 2.0.1, 2.1) |
@@ -83,7 +83,7 @@ Mobile App ──► Mobile API (4001) ──► PostgreSQL (panda_ev_core)
     OCPP CSMS (4002) ◄──WS── Chargers
     PostgreSQL (panda_ev_ocpp)
 
-Admin Portal ──► Admin System (3001) ──► PostgreSQL (panda_ev_system)
+Admin Portal ──► Admin System (4000) ──► PostgreSQL (panda_ev_system)
 ```
 
 ### RabbitMQ Queues
@@ -95,6 +95,8 @@ All RabbitMQ messages are signed with RS256 `x-service-token` headers. Consumers
 | `PANDA_EV_CSMS_COMMANDS` | Mobile → OCPP | `{ routingKey: 'session.start'\|'session.stop', sessionId, identity, connectorId, mobileUserId }` |
 | `PANDA_EV_QUEUE` | OCPP → Mobile + Notification | `transaction.started`, `transaction.stopped`, `charger.booted`, `connector.status_changed` |
 | `PANDA_EV_NOTIFICATIONS` | Mobile/Admin → Notification | `{ routingKey: 'notification.targeted'\|'notification.session'\|'notification.broadcast'\|'notification.overstay_reminder', fcmTokens[], userId, type, title, body, … }` |
+| `PANDA_EV_QUEUE_DLQ` | Mobile (dead-letter for PANDA_EV_QUEUE) | Failed OCPP events after 3 retries (5s/30s/120s backoff); use `rabbitMQ.consumeWithDlq()` |
+| `PANDA_EV_QUEUE_DLX` | Mobile (dead-letter exchange) | Fanout exchange — DLQ is bound to this; set in `RABBITMQ_OCPP_EVENTS_DLX` env |
 | `PANDA_EV_NOTIFICATIONS_DLQ` | Notification (dead-letter) | Failed messages after 3 retries (5s/30s/120s backoff) |
 | `PANDA_EV_USER_EVENTS` | Mobile → Admin | user registration events (admin mirrors user profiles) |
 | `PANDA_EV_SYSTEM_EVENTS` | Admin → Mobile | `{ routingKey: 'content.invalidate', slug }` for Redis cache invalidation |
@@ -197,6 +199,29 @@ Session start flow in Mobile API (`charging-session.service.ts`):
 1. Query highest-priority active `PricingTier` for the charger+connector via LATERAL JOIN through `SystemDbService`
 2. Snapshot entire billing config into Redis at `charging:session:{id}` (8 h TTL)
 3. `OcppConsumerService` reads only from Redis at billing time — never re-queries pricing
+
+### Mobile — OCPP Consumer DLQ Pattern
+
+`OcppConsumerService` uses `rabbitMQ.consumeWithDlq(OCPP_EVENTS_QUEUE, handler)` instead of `consume()`. On handler throw: retries up to 3× with 5s/30s/120s backoff (tracked via `x-retry-count` AMQP header), then dead-letters to `PANDA_EV_QUEUE_DLX` → `PANDA_EV_QUEUE_DLQ`. Main queue (`PANDA_EV_QUEUE`) is **not** re-asserted with DLX args from Mobile — OCPP owns that assertion. Mobile only asserts the DLX exchange and DLQ queue.
+
+Required env vars in `panda-ev-client-mobile/.env`:
+```
+RABBITMQ_OCPP_EVENTS_DLQ=PANDA_EV_QUEUE_DLQ
+RABBITMQ_OCPP_EVENTS_DLX=PANDA_EV_QUEUE_DLX
+```
+
+### Mobile — Real-time Charging Status (SSE vs Polling)
+
+Two endpoints serve live session data — choose based on use case:
+
+| Endpoint | Type | Use when |
+|---|---|---|
+| `GET /api/mobile/v1/charging-sessions/:id/stream` | SSE (push) | Mobile app active screen — server pushes on every MeterValues |
+| `GET /api/mobile/v1/charging-sessions/:id/live` | HTTP (snapshot) | One-shot status check, or platforms without SSE support |
+
+SSE events: meter data object → `{ heartbeat: true }` every 30s → `{ ended: true, status, sessionId }` when session leaves ACTIVE. Client must close `EventSource` on `ended: true`.
+
+**Known Mobile API gaps**: No `GET /charging-sessions/:id` single-session detail endpoint — use `GET /charging-sessions?limit=1` filtered by id, or fetch via invoice. No FCM push sent on session `COMPLETED` (only `parking_warning` if parking fee is enabled).
 
 ### CacheService Pattern
 

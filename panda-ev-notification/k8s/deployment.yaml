@@ -1,0 +1,331 @@
+# ==============================================================================
+# Panda EV — Notification Service (panda-notification-api) — Kubernetes Manifests
+# Cluster  : panda-ev-cluster  |  Region: asia-southeast1
+# Namespace: panda-ev
+# ==============================================================================
+#
+# PRE-REQUISITES — run once before first deploy:
+#
+# 1. Create the Kubernetes Secret:
+#    kubectl create secret generic panda-notification-api-secrets \
+#      --namespace=panda-ev \
+#      --from-literal=DATABASE_URL="postgresql://USER:PASS@127.0.0.1:5432/DB_NAME?schema=panda_ev_notifications" \
+#      --from-literal=RABBITMQ_URL="amqp://USER:PASS@rabbitmq-service:5672" \
+#      --from-literal=FIREBASE_PROJECT_ID="<project-id>" \
+#      --from-literal=FIREBASE_CLIENT_EMAIL="<client-email>" \
+#      --from-literal=FIREBASE_PRIVATE_KEY="<private-key-with-escaped-newlines>" \
+#      --from-literal=SERVICE_JWT_PRIVATE_KEY="$(base64 < keys/notification.pem | tr -d '\n')" \
+#      --from-literal=TRUSTED_SERVICE_PUBLIC_KEYS='[{"iss":"mobile-api","key":"<base64(mobile.pub)>"},{"iss":"admin-api","key":"<base64(admin.pub)>"},{"iss":"ocpp-csms","key":"<base64(ocpp.pub)>"}]'
+#
+#    Generate notification keypair (if not present):
+#      openssl genrsa -out keys/notification.pem 2048
+#      openssl rsa -in keys/notification.pem -pubout -out keys/notification.pub
+#
+# 2. Create GCP Service Account for Cloud SQL Auth Proxy (Workload Identity):
+#    gcloud iam service-accounts create panda-notification-api-sa --project=pandaev
+#
+#    gcloud projects add-iam-policy-binding pandaev \
+#      --member="serviceAccount:panda-notification-api-sa@pandaev.iam.gserviceaccount.com" \
+#      --role="roles/cloudsql.client"
+#
+#    gcloud iam service-accounts add-iam-policy-binding \
+#      panda-notification-api-sa@pandaev.iam.gserviceaccount.com \
+#      --role="roles/iam.workloadIdentityUser" \
+#      --member="serviceAccount:pandaev.svc.id.goog[panda-ev/panda-notification-api-ksa]"
+#
+# 3. Update panda-ev-csms-system-admin/k8s/panda-ev-ingress.yaml and managed-cert.yaml
+#    to add notification-api.pandaev.cc → panda-notification-api-service (port 80)
+#    Socket.IO WebSocket upgrade also requires:
+#    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+#    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+# ==============================================================================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. ConfigMap — Non-sensitive environment variables
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: panda-notification-api-config
+  namespace: panda-ev
+data:
+  NODE_ENV: "production"
+  PORT: "5001"
+  REDIS_URL: "redis://redis-service:6379"
+  # RabbitMQ queue names
+  RABBITMQ_NOTIFICATIONS_QUEUE: "PANDA_EV_NOTIFICATIONS"
+  RABBITMQ_NOTIFICATIONS_DLQ: "PANDA_EV_NOTIFICATIONS_DLQ"
+  RABBITMQ_NOTIFICATIONS_DLX: "PANDA_EV_NOTIFICATIONS_DLX"
+  RABBITMQ_OCPP_EVENTS_QUEUE: "PANDA_EV_QUEUE"
+  # Service identity (used in service-to-service JWT iss claim)
+  SERVICE_NAME: "notification-service"
+  # CORS — Socket.IO admin dashboard; restrict to admin portal domain in production
+  ALLOWED_ORIGINS: "https://admin.panda-ev.com"
+
+---
+# ──────────────────────────────────────────────────────────────────────────────
+# 2. Kubernetes Service Account (Workload Identity → Cloud SQL)
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: panda-notification-api-ksa
+  namespace: panda-ev
+  annotations:
+    iam.gke.io/gcp-service-account: panda-notification-api-sa@pandaev.iam.gserviceaccount.com
+
+---
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. Deployment
+#    Container 1: NestJS Notification Service (HTTP + Socket.IO on port 5001)
+#    Container 2: Cloud SQL Auth Proxy sidecar
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: panda-notification-api
+  namespace: panda-ev
+  labels:
+    app: panda-notification-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: panda-notification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Zero-downtime: always keep all replicas healthy
+  template:
+    metadata:
+      labels:
+        app: panda-notification-api
+    spec:
+      serviceAccountName: panda-notification-api-ksa
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        # ── NestJS Notification Service ──────────────────────────────────────
+        - name: panda-notification-api
+          image: asia-southeast1-docker.pkg.dev/pandaev/panda-ev-repo/panda-notification-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5001
+
+          envFrom:
+            - configMapRef:
+                name: panda-notification-api-config
+
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: DATABASE_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: RABBITMQ_URL
+            # Firebase FCM credentials
+            - name: FIREBASE_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: FIREBASE_PROJECT_ID
+                  optional: true
+            - name: FIREBASE_CLIENT_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: FIREBASE_CLIENT_EMAIL
+                  optional: true
+            - name: FIREBASE_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: FIREBASE_PRIVATE_KEY
+                  optional: true
+            # Service-to-service JWT (RabbitMQ message verification)
+            # Trusts: mobile-api, admin-api, ocpp-csms
+            - name: SERVICE_JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: SERVICE_JWT_PRIVATE_KEY
+            - name: TRUSTED_SERVICE_PUBLIC_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: TRUSTED_SERVICE_PUBLIC_KEYS
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30  # 300s for migrations + startup
+
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+        # ── Cloud SQL Auth Proxy Sidecar ─────────────────────────────────────
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "--private-ip"
+            - "--health-check"
+            - "--http-address=0.0.0.0"
+            - "pandaev:asia-southeast1:panda-ev-noti-db"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12  # 60s for proxy to connect to Cloud SQL
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+---
+# ──────────────────────────────────────────────────────────────────────────────
+# 4a. BackendConfig — custom health check + WebSocket timeout for GKE L7 Ingress
+#     Socket.IO long-polling and WebSocket upgrades require extended timeouts.
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: panda-notification-api-backendconfig
+  namespace: panda-ev
+spec:
+  healthCheck:
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    type: HTTP
+    port: 5001
+    requestPath: /health
+  timeoutSec: 3600  # 1 h — keep Socket.IO connections alive through the LB
+
+---
+# ──────────────────────────────────────────────────────────────────────────────
+# 4. Service (ClusterIP)
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: panda-notification-api-service
+  namespace: panda-ev
+  labels:
+    app: panda-notification-api
+  annotations:
+    cloud.google.com/backend-config: '{"default": "panda-notification-api-backendconfig"}'
+spec:
+  type: ClusterIP
+  selector:
+    app: panda-notification-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5001
+
+---
+# ──────────────────────────────────────────────────────────────────────────────
+# 5. HorizontalPodAutoscaler — scale 2–4 replicas on CPU
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: panda-notification-api-hpa
+  namespace: panda-ev
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: panda-notification-api
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# ──────────────────────────────────────────────────────────────────────────────
+# 6. PodDisruptionBudget — guarantee ≥1 replica during node drains / upgrades
+# ──────────────────────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: panda-notification-api-pdb
+  namespace: panda-ev
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: panda-notification-api

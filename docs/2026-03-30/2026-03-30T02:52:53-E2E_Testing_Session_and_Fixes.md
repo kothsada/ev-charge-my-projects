@@ -200,7 +200,37 @@ RABBITMQ_OCPP_EVENTS_DLX=PANDA_EV_QUEUE_DLX
 6. Mobile billing auto-deduct wallet
 ```
 
-### SSE Response
+### API Routes สำหรับ Real-time Status บน Mobile
+
+มี 2 routes ที่ต่างกัน — ต้องเลือกให้ถูกตามการใช้งาน:
+
+| Route | วิธีทำงาน | เหมาะกับ |
+|---|---|---|
+| `GET /:id/live` | HTTP GET ปกติ ส่ง response ครั้งเดียว | Poll ทุก 5–10 วิ, snapshot ครั้งแรก |
+| `GET /:id/stream` | SSE — server push ตลอด connection | Real-time บน mobile app |
+
+**ใช้ `/stream` (SSE) เป็นหลัก** เพราะ:
+- ไม่ต้อง poll เอง — ประหยัด battery และ bandwidth
+- server push ทันทีที่ charger ส่ง MeterValues
+- มี `ended: true` บอก client ชัดเจนเมื่อ session สิ้นสุด
+
+**ใช้ `/live` เมื่อ**:
+- HTTP library บน mobile ไม่รองรับ SSE
+- ต้องการ snapshot ครั้งเดียวตอนเปิดหน้าจอ
+
+```
+# SSE endpoint
+GET /api/mobile/v1/charging-sessions/:id/stream
+Authorization: Bearer <accessToken>
+
+# Polling endpoint (ทางเลือก)
+GET /api/mobile/v1/charging-sessions/:id/live
+Authorization: Bearer <accessToken>
+```
+
+### SSE Response Events
+
+**Meter update** (ทุกครั้งที่ charger ส่ง MeterValues):
 ```json
 {
   "sessionId": "...",
@@ -214,7 +244,27 @@ RABBITMQ_OCPP_EVENTS_DLX=PANDA_EV_QUEUE_DLX
   "updatedAt": "..."
 }
 ```
-เมื่อ session จบ จะได้ `{ "ended": true, "status": "COMPLETED" }` → ให้ close SSE connection
+
+**Heartbeat** (ทุก 30 วินาที — keepalive):
+```json
+{ "heartbeat": true }
+```
+
+**Session ended** (เมื่อ status ไม่ใช่ ACTIVE):
+```json
+{ "ended": true, "status": "COMPLETED", "sessionId": "..." }
+```
+
+ให้ client ปิด EventSource ทันทีที่ได้ `ended: true`:
+```js
+evtSource.onmessage = (e) => {
+  const data = JSON.parse(e.data);
+  if (data.ended) {
+    evtSource.close();
+    // navigate to billing summary screen
+  }
+};
+```
 
 ### Redis Debug Commands
 ```bash
