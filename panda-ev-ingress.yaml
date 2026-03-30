@@ -1,0 +1,51 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: panda-ev-ingress
+  namespace: panda-ev
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    # ໃຊ້ Static IP ທີ່ເຮົາຈອງໄວ້
+    kubernetes.io/ingress.global-static-ip-name: panda-api-ip
+    # ຜູກກັບ SSL Certificate ທີ່ເຮົາຫາກໍ່ສ້າງ
+    networking.gke.io/managed-certificates: panda-ev-certs
+    # ບາງຄັ້ງ GKE ຕ້ອງການການຢືນຢັນເພີ່ມເຕີມ. ໃຫ້ລອງຕື່ມແຖວນີ້ເຂົ້າໄປ
+    kubernetes.io/ingress.allow-http: "true"
+spec:
+  rules:
+    # 1. Admin & Dashboard
+    - host: admin-api.pandaev.cc
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: panda-system-api-service
+                port:
+                  number: 80
+
+    # 2. Mobile App (End-users)
+    - host: api.pandaev.cc
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: panda-mobile-api-service
+                port:
+                  number: 80
+
+    # 3. Notification Service (REST API + Socket.IO admin dashboard)
+    #    BackendConfig sets timeoutSec: 3600 for Socket.IO long-lived connections
+    - host: notification-api.pandaev.cc
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: panda-notification-api-service
+                port:
+                  number: 80

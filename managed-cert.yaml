@@ -1,0 +1,10 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: panda-ev-certs
+  namespace: panda-ev
+spec:
+  domains:
+    - admin-api.pandaev.cc
+    - api.pandaev.cc
+    - notification-api.pandaev.cc

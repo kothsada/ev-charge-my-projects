@@ -141,7 +141,8 @@ cp -n "$MOBILE_KEYS/mobile.pub" "$OCPP_KEYS/mobile.pub" 2>/dev/null \
   && echo "  Copied mobile.pub       → ocpp/keys/" \
   || echo "  ocpp/keys/mobile.pub already present — skipping"
 
-# notification/keys/ needs: admin.pub  mobile.pub
+# notification/keys/ needs: admin.pub  mobile.pub  ocpp.pub
+# (notification consumes PANDA_EV_QUEUE published by ocpp-csms — must verify x-service-token)
 cp -n "$ADMIN_KEYS/admin.pub" "$NOTIF_KEYS/admin.pub" 2>/dev/null \
   && echo "  Copied admin.pub        → notification/keys/" \
   || echo "  notification/keys/admin.pub already present — skipping"
@@ -149,6 +150,10 @@ cp -n "$ADMIN_KEYS/admin.pub" "$NOTIF_KEYS/admin.pub" 2>/dev/null \
 cp -n "$MOBILE_KEYS/mobile.pub" "$NOTIF_KEYS/mobile.pub" 2>/dev/null \
   && echo "  Copied mobile.pub       → notification/keys/" \
   || echo "  notification/keys/mobile.pub already present — skipping"
+
+cp -n "$OCPP_KEYS/ocpp.pub" "$NOTIF_KEYS/ocpp.pub" 2>/dev/null \
+  && echo "  Copied ocpp.pub         → notification/keys/" \
+  || echo "  notification/keys/ocpp.pub already present — skipping"
 
 echo ""
 
@@ -195,7 +200,7 @@ echo "# panda-ev-notification/.env"
 echo "SERVICE_NAME=notification-service"
 echo "SERVICE_JWT_PRIVATE_KEY_PATH=$NOTIF_KEYS/notification.pem"
 echo "TRUSTED_SERVICE_PUBLIC_KEYS_DIR=$NOTIF_KEYS"
-echo "TRUSTED_SERVICE_ISSUERS=mobile-api:mobile,admin-api:admin"
+echo "TRUSTED_SERVICE_ISSUERS=mobile-api:mobile,admin-api:admin,ocpp-csms:ocpp"
 echo ""
 
 echo "================================================================"
@@ -228,7 +233,7 @@ echo ""
 echo "# panda-ev-notification/.env"
 echo "SERVICE_NAME=notification-service"
 echo "SERVICE_JWT_PRIVATE_KEY=$(b64 "$NOTIF_KEYS/notification.pem")"
-echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"mobile-api\",\"key\":\"${MOBILE_PUB}\"},{\"iss\":\"admin-api\",\"key\":\"${ADMIN_PUB}\"}]"
+echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"mobile-api\",\"key\":\"${MOBILE_PUB}\"},{\"iss\":\"admin-api\",\"key\":\"${ADMIN_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCPP_PUB}\"}]"
 echo ""
 
 echo "================================================================"

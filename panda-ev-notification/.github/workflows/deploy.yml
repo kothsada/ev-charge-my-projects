@@ -1,0 +1,166 @@
+name: Build and Deploy — panda-notification-api
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Triggers: push to main branch
+# ──────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**"                              # any file change triggers a build
+      - "!**.md"                          # ignore markdown-only changes
+      - "!.github/workflows/deploy.yml"   # workflow-only changes are handled below
+  workflow_dispatch:                      # allow manual trigger from GitHub UI
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Environment — shared across all steps
+# ──────────────────────────────────────────────────────────────────────────────
+env:
+  PROJECT_ID: pandaev
+  GAR_LOCATION: asia-southeast1
+  REPOSITORY: panda-ev-repo
+  IMAGE: panda-notification-api
+  CLUSTER_NAME: panda-ev-cluster
+  CLUSTER_REGION: asia-southeast1
+  DEPLOYMENT_NAME: panda-notification-api
+  CONTAINER_NAME: panda-notification-api  # must match containers[].name in deployment.yaml
+  NAMESPACE: panda-ev
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-and-deploy:
+    name: Build → Push → Deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+
+    # Required for Workload Identity Federation OIDC token
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      # ────────────────────────────────────────────────────────────────────────
+      # 1. Checkout source code
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 2. Authenticate to GCP via Workload Identity Federation
+      #    Required secrets:
+      #      GCP_WORKLOAD_IDENTITY_PROVIDER — WIF provider resource name
+      #        format: projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>
+      #      GCP_SERVICE_ACCOUNT — GitHub Actions deployer SA email
+      #        e.g.: github-actions-sa@pandaev.iam.gserviceaccount.com
+      #    Required GCP SA roles:
+      #      roles/artifactregistry.writer  — push images
+      #      roles/container.developer      — update GKE deployments
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 3. Configure Docker to authenticate with Artifact Registry
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Login to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GAR_LOCATION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 4. Set up Docker Buildx (enables layer caching)
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 5. Build Docker image and push to Artifact Registry
+      #    - Tagged with both the commit SHA (immutable) and "latest"
+      #    - Registry cache stored as a separate tag (:buildcache) to speed up
+      #      subsequent builds via inline layer reuse
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:buildcache,mode=max
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 6. Get GKE cluster credentials
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.CLUSTER_NAME }}
+          location: ${{ env.CLUSTER_REGION }}
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 7. Apply any new Kubernetes manifest changes (configmap, HPA, etc.)
+      #    Skipped on the first run if the namespace does not exist yet — create
+      #    the Secret manually first (see k8s/deployment.yaml header comments).
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/deployment.yaml --validate=false
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 8. Roll out the new image (atomic — uses the immutable SHA tag)
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Update deployment image
+        run: |
+          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+            ${{ env.CONTAINER_NAME }}=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }} \
+            --namespace=${{ env.NAMESPACE }}
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 9. Wait for rollout to complete (fails the pipeline if pods crash-loop)
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+            --namespace=${{ env.NAMESPACE }} \
+            --timeout=5m
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 10. Debug on failure (only runs if previous steps fail)
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "── Deployment Status ─────────────────────────────────────────"
+          kubectl describe deployment/${{ env.DEPLOYMENT_NAME }} --namespace=${{ env.NAMESPACE }}
+          echo "── Pod Status ────────────────────────────────────────────────"
+          kubectl get pods --namespace=${{ env.NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+          echo "── Pod Details (Events) ──────────────────────────────────────"
+          kubectl describe pods --namespace=${{ env.NAMESPACE }} -l app=${{ env.DEPLOYMENT_NAME }}
+          echo "── Container Logs (last 50 lines) ────────────────────────────"
+          kubectl logs deployment/${{ env.DEPLOYMENT_NAME }} --namespace=${{ env.NAMESPACE }} --all-containers=true --tail=50
+
+      # ────────────────────────────────────────────────────────────────────────
+      # 11. Post-deploy verification
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Verify deployment
+        if: success()
+        run: |
+          echo "── Pods ──────────────────────────────────────────────────────"
+          kubectl get pods \
+            --namespace=${{ env.NAMESPACE }} \
+            --selector=app=${{ env.DEPLOYMENT_NAME }} \
+            --output=wide
+          echo "── Deployment ────────────────────────────────────────────────"
+          kubectl get deployment ${{ env.DEPLOYMENT_NAME }} \
+            --namespace=${{ env.NAMESPACE }}
