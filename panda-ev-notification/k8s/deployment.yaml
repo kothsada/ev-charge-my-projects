@@ -24,14 +24,14 @@
 # 2. Create GCP Service Account for Cloud SQL Auth Proxy (Workload Identity):
 #    gcloud iam service-accounts create panda-notification-api-sa --project=pandaev
 #
-#    gcloud projects add-iam-policy-binding pandaev \
-#      --member="serviceAccount:panda-notification-api-sa@pandaev.iam.gserviceaccount.com" \
-#      --role="roles/cloudsql.client"
+  #  gcloud projects add-iam-policy-binding pandaev \
+  #    --member="serviceAccount:panda-cicd-sa@pandaev.iam.gserviceaccount.com" \
+  #    --role="roles/cloudsql.client"
 #
-#    gcloud iam service-accounts add-iam-policy-binding \
-#      panda-notification-api-sa@pandaev.iam.gserviceaccount.com \
-#      --role="roles/iam.workloadIdentityUser" \
-#      --member="serviceAccount:pandaev.svc.id.goog[panda-ev/panda-notification-api-ksa]"
+  #  gcloud iam service-accounts add-iam-policy-binding \
+  #    panda-cicd-sa@pandaev.iam.gserviceaccount.com \
+  #    --role="roles/iam.workloadIdentityUser" \
+  #    --member="serviceAccount:pandaev.svc.id.goog[panda-ev/panda-notification-api-ksa]"
 #
 # 3. Update panda-ev-csms-system-admin/k8s/panda-ev-ingress.yaml and managed-cert.yaml
 #    to add notification-api.pandaev.cc → panda-notification-api-service (port 80)
@@ -72,7 +72,7 @@ metadata:
   name: panda-notification-api-ksa
   namespace: panda-ev
   annotations:
-    iam.gke.io/gcp-service-account: panda-notification-api-sa@pandaev.iam.gserviceaccount.com
+    iam.gke.io/gcp-service-account: panda-cicd-sa@pandaev.iam.gserviceaccount.com
 
 ---
 # ──────────────────────────────────────────────────────────────────────────────

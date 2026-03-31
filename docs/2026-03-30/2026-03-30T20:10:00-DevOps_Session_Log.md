@@ -38,5 +38,15 @@
     4. **การตรวจสอบ Health Check:** เน้นย้ำให้เช็คสถานะ Backend ใน Cloud Console หรือใช้ `kubectl describe ingress`
 - **ผลลัพธ์ที่คาดหวัง:** ทราฟฟิกที่ส่งไปยัง `notification-api.pandaev.cc` จะถูกส่งไปยัง Pod ของ Notification Service อย่างถูกต้อง
 
+### การแก้ไขปัญหา Service "panda-notification-api-service" Not Found
+- **เวลา:** 20:35 (ประมาณ)
+- **รายละเอียด:** ตรวจสอบว่า `panda-notification-api-service` หายไปจาก Cluster แม้จะมีการระบุใน Ingress แล้ว
+- **ขั้นตอนที่แนะนำและอธิบาย:**
+    1. **การค้นหาสาเหตุ:** พบว่าชื่อ Service ในไฟล์ YAML ถูกต้อง แต่ยังไม่มีการ `apply` ลงใน Cluster
+    2. **ไฟล์ต้นฉบับ:** อยู่ที่ `panda-ev-notification/k8s/deployment.yaml`
+    3. **คำสั่งดำเนินการ:** แนะนำให้รัน `kubectl apply -f panda-ev-notification/k8s/deployment.yaml` เพื่อสร้างทรัพยากรที่ขาดหายไป
+    4. **การตรวจสอบ BackendConfig:** ย้ำให้ตรวจสอบการสร้าง BackendConfig เพื่อรองรับการทำงานของ Socket.IO
+- **ผลลัพธ์ที่คาดหวัง:** Service จะถูกสร้างขึ้นและ Ingress จะสามารถเชื่อมต่อ (Routing) ได้อย่างถูกต้อง
+
 ---
 *บันทึกโดย Gemini CLI - พร้อมปฏิบัติหน้าที่ผู้เชี่ยวชาญ DevOps*

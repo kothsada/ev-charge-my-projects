@@ -113,16 +113,37 @@ model NotificationLog {
 }
 
 // ============================================================
+// FCM DEVICE REGISTRY
+// ============================================================
+
+/// Canonical FCM token store — one row per device, owned by Notification Service.
+/// Tokens are upserted on device.registered events and soft-deleted on stale responses.
+model UserFcmDevice {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.VarChar(150)
+  fcmToken    String    @unique @map("fcm_token") @db.VarChar(500)
+  platform    String?   @db.VarChar(20)
+  appVersion  String?   @map("app_version") @db.VarChar(30)
+  isActive    Boolean   @default(true) @map("is_active")
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, isActive])
+  @@index([lastUsedAt])
+  @@map("user_fcm_devices")
+  @@schema("panda_ev_notifications")
+}
+
+// ============================================================
 // USER PREFERENCES
 // ============================================================
 
-/// Per-user FCM token registry and notification opt-in settings
+/// Per-user notification opt-in settings and language preference.
+/// FCM tokens are stored separately in UserFcmDevice.
 model UserNotificationPreference {
   id              String   @id @default(uuid()) @db.Uuid
   userId          String   @unique @map("user_id") @db.VarChar(150)
-  fcmTokens       String[] @default([]) @map("fcm_tokens")
-  apnsTokens      String[] @default([]) @map("apns_tokens")
-  devicePlatforms String[] @default([]) @map("device_platforms")
   language        String   @default("lo") @db.VarChar(10)
   batteryAlerts   Boolean  @default(true) @map("battery_alerts")
   sessionAlerts   Boolean  @default(true) @map("session_alerts")

@@ -6,9 +6,10 @@ import { DedupService } from '../dedup/dedup.service';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
 import { AggregationService } from '../aggregation/aggregation.service';
 import { AdminStatsGateway } from '../websocket/admin-stats.gateway';
+import { DeviceService } from '../device/device.service';
 import { Prisma } from '../../../generated/prisma/client';
 
-// Stale token feedback goes here; Mobile API consumes and deletes from userDevice table
+// Mobile API consumes this queue to clean up its own user_devices table
 const FCM_CLEANUP_QUEUE =
   process.env.RABBITMQ_FCM_CLEANUP_QUEUE ?? 'PANDA_EV_FCM_CLEANUP';
 
@@ -17,7 +18,8 @@ export interface ProcessNotificationDto {
   sessionId?: string;
   stationId?: string;
   chargerIdentity?: string;
-  fcmTokens: string[];
+  /** Optional: if omitted, tokens are resolved from user_fcm_devices by userId */
+  fcmTokens?: string[];
   type: string;
   title: string;
   body: string;
@@ -45,6 +47,7 @@ export class NotificationProcessor {
     private readonly rateLimit: RateLimitService,
     private readonly aggregation: AggregationService,
     private readonly statsGateway: AdminStatsGateway,
+    private readonly deviceService: DeviceService,
   ) {}
 
   async process(msg: ProcessNotificationDto): Promise<ProcessNotificationResult> {
@@ -52,7 +55,7 @@ export class NotificationProcessor {
     if (!msg.skipDedup && msg.sessionId) {
       const isNew = await this.dedup.isNewNotification(msg.sessionId, msg.type);
       if (!isNew) {
-        this.logger.debug(`Duplicate notification suppressed: ${msg.sessionId}/${msg.type}`);
+        this.logger.debug(`Duplicate suppressed: ${msg.sessionId}/${msg.type}`);
         await this.aggregation.onNotificationSent(msg.type, 'FCM', 'SUPPRESSED');
         return { status: 'SUPPRESSED' };
       }
@@ -62,19 +65,30 @@ export class NotificationProcessor {
     if (!msg.skipRateLimit) {
       const allowed = await this.rateLimit.isAllowed(msg.userId, msg.type);
       if (!allowed) {
-        this.logger.debug(`Rate limited notification suppressed for user ${msg.userId}`);
+        this.logger.debug(`Rate limited for user ${msg.userId}`);
         await this.aggregation.onNotificationSent(msg.type, 'FCM', 'SUPPRESSED');
         return { status: 'SUPPRESSED' };
       }
     }
 
-    // 3. Send FCM
+    // 3. Resolve FCM tokens — use provided tokens or look up from centralized device store
+    let tokens = msg.fcmTokens ?? [];
+    if (!tokens.length) {
+      tokens = await this.deviceService.getActiveTokens(msg.userId);
+    }
+    if (!tokens.length) {
+      this.logger.debug(`No active FCM tokens for user ${msg.userId} — skipping`);
+      await this.aggregation.onNotificationSent(msg.type, 'FCM', 'SUPPRESSED');
+      return { status: 'SUPPRESSED' };
+    }
+
+    // 4. Send FCM
     let status: 'SENT' | 'FAILED' = 'SENT';
     let fcmMessageId: string | undefined;
     let errorMessage: string | undefined;
 
     const result = await this.fcm
-      .send(msg.fcmTokens, {
+      .send(tokens, {
         title: msg.title,
         body: msg.body,
         data: msg.data,
@@ -93,8 +107,12 @@ export class NotificationProcessor {
       status = 'FAILED';
     }
 
-    // Publish stale tokens back to Mobile API for cleanup from userDevice table
-    if (result && result.staleTokens.length > 0) {
+    // 5. Handle stale tokens
+    if (result?.staleTokens.length) {
+      // Mark stale in Notification Service's own device store
+      await this.deviceService.markTokensStale(result.staleTokens);
+
+      // Notify Mobile API so it can clean up its user_devices table too
       await this.rabbitMQ
         .publish(FCM_CLEANUP_QUEUE, {
           routingKey: 'device.token_stale',
@@ -103,7 +121,13 @@ export class NotificationProcessor {
         .catch(() => null);
     }
 
-    // 4. Log to DB
+    // Update lastUsedAt for successfully delivered tokens
+    if (result?.sent && result.sent > 0) {
+      const sentTokens = tokens.filter((t) => !result.staleTokens.includes(t));
+      await this.deviceService.updateLastUsed(sentTokens).catch(() => null);
+    }
+
+    // 6. Log to DB
     const log = await this.prisma.notificationLog
       .create({
         data: {
@@ -127,10 +151,10 @@ export class NotificationProcessor {
         return null;
       });
 
-    // 5. Update aggregated stats
+    // 7. Update aggregated stats
     await this.aggregation.onNotificationSent(msg.type, 'FCM', status);
 
-    // 6. Emit to admin dashboard
+    // 8. Emit to admin dashboard
     this.statsGateway.emitNotificationSent({
       type: msg.type,
       userId: msg.userId,

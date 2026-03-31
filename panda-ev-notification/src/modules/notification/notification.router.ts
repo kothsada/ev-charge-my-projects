@@ -3,6 +3,7 @@ import { RabbitMQService } from '../../configs/rabbitmq/rabbitmq.service';
 import { NotificationProcessor, ProcessNotificationDto } from './notification.processor';
 import { AggregationService } from '../aggregation/aggregation.service';
 import { AdminStatsGateway } from '../websocket/admin-stats.gateway';
+import { DeviceService } from '../device/device.service';
 
 @Injectable()
 export class NotificationRouter implements OnModuleInit {
@@ -13,6 +14,7 @@ export class NotificationRouter implements OnModuleInit {
     private readonly processor: NotificationProcessor,
     private readonly aggregation: AggregationService,
     private readonly statsGateway: AdminStatsGateway,
+    private readonly deviceService: DeviceService,
   ) {}
 
   async onModuleInit() {
@@ -35,15 +37,26 @@ export class NotificationRouter implements OnModuleInit {
     const routingKey = msg.routingKey as string;
 
     if (routingKey === 'notification.targeted' || routingKey === 'notification.session') {
-      // Standard targeted notification from Mobile — msg has fcmTokens, title, body, type, etc.
+      // Standard targeted notification — msg may include fcmTokens[] (backwards-compat)
+      // or omit them to let the processor resolve tokens from user_fcm_devices by userId
       await this.processor.process(msg as unknown as ProcessNotificationDto);
     } else if (routingKey === 'notification.broadcast') {
-      // Broadcast — fcmTokens is array of all target tokens (provided by sender)
+      // Broadcast — skipDedup always true; fcmTokens provided by sender
       await this.processor.process({ ...(msg as unknown as ProcessNotificationDto), skipDedup: true });
     } else if (routingKey === 'notification.overstay_reminder') {
       await this.handleOverstayReminder(msg);
+    } else if (routingKey === 'device.registered') {
+      // Mobile API publishes this when a user registers a new FCM token
+      await this.deviceService.registerToken(
+        msg.userId as string,
+        msg.fcmToken as string,
+        msg.platform as string | undefined,
+        msg.appVersion as string | undefined,
+      );
+    } else if (routingKey === 'device.unregistered') {
+      // Mobile API publishes this when a user logs out / removes a device
+      await this.deviceService.unregisterToken(msg.fcmToken as string);
     } else {
-      // Unknown routing key — log and ack
       this.logger.warn(`Unknown routingKey: ${routingKey}`);
     }
   }
