@@ -45,7 +45,7 @@ export class AggregationService {
 
       // Upsert hourly stat
       await this.prisma.$executeRaw`
-        INSERT INTO panda_ev_notifications.station_hourly_stats
+        INSERT INTO panda_ev_noti.station_hourly_stats
           (id, station_id, station_name, hour, sessions_completed, total_energy_kwh, total_revenue_lak, total_overstay_lak, overstay_incidents)
         VALUES
           (gen_random_uuid(), ${event.stationId}, ${event.stationName}, ${hour}, 1, ${energyDecimal}::decimal, ${BigInt(Math.round(event.amountLak))}, ${overstayLak}, ${wasOverstay})
@@ -59,7 +59,7 @@ export class AggregationService {
 
       // Upsert daily stat
       await this.prisma.$executeRaw`
-        INSERT INTO panda_ev_notifications.station_daily_stats
+        INSERT INTO panda_ev_noti.station_daily_stats
           (id, station_id, station_name, date, total_sessions, completed_sessions, total_energy_kwh, total_revenue_lak, avg_session_minutes, total_overstay_lak, overstay_incidents)
         VALUES
           (gen_random_uuid(), ${event.stationId}, ${event.stationName}, ${day}::date, 1, 1, ${energyDecimal}::decimal, ${BigInt(Math.round(event.amountLak))}, ${event.durationMinutes.toFixed(2)}::decimal, ${overstayLak}, ${wasOverstay})
@@ -82,7 +82,7 @@ export class AggregationService {
       const hour = startOfHour(event.startedAt);
 
       await this.prisma.$executeRaw`
-        INSERT INTO panda_ev_notifications.station_hourly_stats
+        INSERT INTO panda_ev_noti.station_hourly_stats
           (id, station_id, station_name, hour, sessions_started)
         VALUES
           (gen_random_uuid(), ${event.stationId}, ${event.stationName}, ${hour}, 1)
@@ -108,10 +108,10 @@ export class AggregationService {
       const suppressedIncr = status === 'SUPPRESSED' ? 1 : 0;
 
       await this.prisma.$executeRaw`
-        INSERT INTO panda_ev_notifications.notification_daily_stats
+        INSERT INTO panda_ev_noti.notification_daily_stats
           (id, date, type, channel, total_sent, total_failed, total_suppressed)
         VALUES
-          (gen_random_uuid(), ${today}::date, ${type}, ${channelEnum}::"panda_ev_notifications"."NotificationChannel", ${sentIncr}, ${failedIncr}, ${suppressedIncr})
+          (gen_random_uuid(), ${today}::date, ${type}, ${channelEnum}::"panda_ev_noti"."NotificationChannel", ${sentIncr}, ${failedIncr}, ${suppressedIncr})
         ON CONFLICT (date, type, channel) DO UPDATE SET
           total_sent = notification_daily_stats.total_sent + ${sentIncr},
           total_failed = notification_daily_stats.total_failed + ${failedIncr},
@@ -128,7 +128,7 @@ export class AggregationService {
       const overstayLak = BigInt(Math.round(event.overstayLak));
 
       await this.prisma.$executeRaw`
-        INSERT INTO panda_ev_notifications.station_daily_stats
+        INSERT INTO panda_ev_noti.station_daily_stats
           (id, station_id, station_name, date, total_overstay_lak, overstay_incidents)
         VALUES
           (gen_random_uuid(), ${event.stationId}, ${event.stationName}, ${day}::date, ${overstayLak}, 1)

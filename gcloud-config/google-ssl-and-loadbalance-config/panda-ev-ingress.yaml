@@ -37,15 +37,14 @@ spec:
                 port:
                   number: 80
 
-    # 3. Notification Service (REST API + Socket.IO admin dashboard)
-    #    BackendConfig sets timeoutSec: 3600 for Socket.IO long-lived connections
-    - host: notification-api.pandaev.cc
+    # 4. Payment Gateway (BCEL OnePay QR — internal + mobile-facing)
+    - host: gateway-api.pandaev.cc
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: panda-notification-api-service
+                name: panda-gateway-api-service
                 port:
                   number: 80

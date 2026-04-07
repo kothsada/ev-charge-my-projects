@@ -12,7 +12,7 @@ NestJS 11 **Notification Microservice** for the Panda EV platform. Handles FCM p
 
 | Service | Port | DB schema | Purpose |
 |---|---|---|---|
-| **Notification** (this repo) | 5001 | `panda_ev_notifications` | Push delivery, stats, admin WS dashboard |
+| **Notification** (this repo) | 5001 | `panda_ev_noti` | Push delivery, stats, admin WS dashboard |
 | Mobile API | 4001 | `panda_ev_core` | Auth, wallet, charging sessions |
 | Admin | 3001 | `panda_ev_system` | IAM, stations, pricing |
 | OCPP CSMS | 4002 | `panda_ev_ocpp` | OCPP 1.6J charger protocol |
@@ -50,7 +50,7 @@ npx ts-node prisma/seed/seed-templates.ts
 | Variable | Default | Notes |
 |---|---|---|
 | `PORT` | `5001` | |
-| `DATABASE_URL` | — | PostgreSQL, `?schema=panda_ev_notifications` |
+| `DATABASE_URL` | — | PostgreSQL, `?schema=panda_ev_noti` |
 | `REDIS_URL` | `redis://localhost:6379` | **Hard requirement** — app exits on failure |
 | `RABBITMQ_URL` | — | Soft-fails if unset |
 | `RABBITMQ_NOTIFICATIONS_QUEUE` | `PANDA_EV_NOTIFICATIONS` | Main inbound queue (with DLQ) |
@@ -200,7 +200,7 @@ All responses are wrapped by `ResponseInterceptor` → `{ success, statusCode, d
 
 ```ts
 await this.prisma.$executeRaw`
-  INSERT INTO "panda_ev_notifications"."station_hourly_stats"
+  INSERT INTO "panda_ev_noti"."station_hourly_stats"
     ("id", "stationId", "stationName", "hour", "sessionsStarted")
   VALUES (gen_random_uuid(), ${stationId}, ${stationName}, ${hour}, 1)
   ON CONFLICT ("stationId", "hour") DO UPDATE

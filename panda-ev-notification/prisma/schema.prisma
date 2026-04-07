@@ -1,6 +1,6 @@
 // ============================================================
 // Panda EV Hub Platform — Notification Microservice
-// Database: panda-ev-noti-db
+// Database: panda-ev-core-instance-db-a1
 // ============================================================
 
 generator client {
@@ -10,7 +10,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["panda_ev_notifications"]
+  schemas  = ["panda_ev_noti"]
 }
 
 // ============================================================
@@ -22,7 +22,7 @@ enum NotificationChannel {
   WEBSOCKET
   BOTH
 
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }
 
 enum NotificationStatus {
@@ -34,7 +34,7 @@ enum NotificationStatus {
   FAILED
   SUPPRESSED
 
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }
 
 enum NotificationPriority {
@@ -42,7 +42,7 @@ enum NotificationPriority {
   NORMAL
   LOW
 
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }
 
 // ============================================================
@@ -71,7 +71,7 @@ model NotificationTemplate {
   logs NotificationLog[]
 
   @@map("notification_templates")
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }
 
 // ============================================================
@@ -109,7 +109,7 @@ model NotificationLog {
   @@index([status, sentAt])
   @@index([chargerIdentity, sentAt])
   @@map("notification_logs")
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }
 
 // ============================================================
@@ -132,7 +132,7 @@ model UserFcmDevice {
   @@index([userId, isActive])
   @@index([lastUsedAt])
   @@map("user_fcm_devices")
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }
 
 // ============================================================
@@ -155,7 +155,7 @@ model UserNotificationPreference {
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("user_notification_preferences")
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }
 
 // ============================================================
@@ -181,7 +181,7 @@ model StationHourlyStat {
   @@unique([stationId, hour])
   @@index([hour(sort: Desc)])
   @@map("station_hourly_stats")
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }
 
 /// Pre-aggregated per-station session and revenue metrics, bucketed by calendar date
@@ -207,7 +207,7 @@ model StationDailyStat {
   @@unique([stationId, date])
   @@index([date(sort: Desc)])
   @@map("station_daily_stats")
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }
 
 /// Pre-aggregated notification delivery metrics per type+channel per day
@@ -227,5 +227,5 @@ model NotificationDailyStat {
   @@unique([date, type, channel])
   @@index([date(sort: Desc)])
   @@map("notification_daily_stats")
-  @@schema("panda_ev_notifications")
+  @@schema("panda_ev_noti")
 }

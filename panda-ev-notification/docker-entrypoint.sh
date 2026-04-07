@@ -24,4 +24,4 @@ npx prisma migrate deploy --schema=./prisma/schema.prisma
 echo "Migrations applied"
 
 echo "Starting Panda EV Notification Service..."
-exec node dist/main
+exec node dist/src/main

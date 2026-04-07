@@ -2,6 +2,7 @@
 # Panda EV — Notification Service (panda-notification-api) — Kubernetes Manifests
 # Cluster  : panda-ev-cluster  |  Region: asia-southeast1
 # Namespace: panda-ev
+# Cloud SQL : pandaev:asia-southeast1:panda-ev-core-instance-db-a1
 # ==============================================================================
 #
 # PRE-REQUISITES — run once before first deploy:
@@ -9,7 +10,7 @@
 # 1. Create the Kubernetes Secret:
 #    kubectl create secret generic panda-notification-api-secrets \
 #      --namespace=panda-ev \
-#      --from-literal=DATABASE_URL="postgresql://USER:PASS@127.0.0.1:5432/DB_NAME?schema=panda_ev_notifications" \
+#      --from-literal=DATABASE_URL="postgresql://USER:PASS@127.0.0.1:5432/DB_NAME?schema=panda_ev_noti" \
 #      --from-literal=RABBITMQ_URL="amqp://USER:PASS@rabbitmq-service:5672" \
 #      --from-literal=FIREBASE_PROJECT_ID="<project-id>" \
 #      --from-literal=FIREBASE_CLIENT_EMAIL="<client-email>" \
@@ -28,10 +29,10 @@
   #    --member="serviceAccount:panda-cicd-sa@pandaev.iam.gserviceaccount.com" \
   #    --role="roles/cloudsql.client"
 #
-  #  gcloud iam service-accounts add-iam-policy-binding \
-  #    panda-cicd-sa@pandaev.iam.gserviceaccount.com \
-  #    --role="roles/iam.workloadIdentityUser" \
-  #    --member="serviceAccount:pandaev.svc.id.goog[panda-ev/panda-notification-api-ksa]"
+#    gcloud iam service-accounts add-iam-policy-binding \
+#      panda-cicd-sa@pandaev.iam.gserviceaccount.com \
+#      --role="roles/iam.workloadIdentityUser" \
+#      --member="serviceAccount:pandaev.svc.id.goog[panda-ev/panda-notification-api-ksa]"
 #
 # 3. Update panda-ev-csms-system-admin/k8s/panda-ev-ingress.yaml and managed-cert.yaml
 #    to add notification-api.pandaev.cc → panda-notification-api-service (port 80)
@@ -49,8 +50,8 @@ metadata:
   name: panda-notification-api-config
   namespace: panda-ev
 data:
-  NODE_ENV: "production"
-  PORT: "5001"
+  NODE_ENV: "development"
+  PORT: "4003"
   REDIS_URL: "redis://redis-service:6379"
   # RabbitMQ queue names
   RABBITMQ_NOTIFICATIONS_QUEUE: "PANDA_EV_NOTIFICATIONS"
@@ -60,7 +61,7 @@ data:
   # Service identity (used in service-to-service JWT iss claim)
   SERVICE_NAME: "notification-service"
   # CORS — Socket.IO admin dashboard; restrict to admin portal domain in production
-  ALLOWED_ORIGINS: "https://admin.panda-ev.com"
+  ALLOWED_ORIGINS: "*"
 
 ---
 # ──────────────────────────────────────────────────────────────────────────────
@@ -77,7 +78,7 @@ metadata:
 ---
 # ──────────────────────────────────────────────────────────────────────────────
 # 3. Deployment
-#    Container 1: NestJS Notification Service (HTTP + Socket.IO on port 5001)
+#    Container 1: NestJS Notification Service (HTTP + Socket.IO on port 4003)
 #    Container 2: Cloud SQL Auth Proxy sidecar
 # ──────────────────────────────────────────────────────────────────────────────
 apiVersion: apps/v1
@@ -112,7 +113,7 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
-              containerPort: 5001
+              containerPort: 4003
 
           envFrom:
             - configMapRef:
@@ -164,7 +165,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 5001
+              port: 4003
             initialDelaySeconds: 5
             periodSeconds: 10
             failureThreshold: 3
@@ -173,7 +174,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 5001
+              port: 4003
             initialDelaySeconds: 10
             periodSeconds: 30
             failureThreshold: 3
@@ -182,7 +183,7 @@ spec:
           startupProbe:
             httpGet:
               path: /health
-              port: 5001
+              port: 4003
             initialDelaySeconds: 10
             periodSeconds: 10
             failureThreshold: 30  # 300s for migrations + startup
@@ -205,7 +206,7 @@ spec:
             - "--private-ip"
             - "--health-check"
             - "--http-address=0.0.0.0"
-            - "pandaev:asia-southeast1:panda-ev-noti-db"
+            - "pandaev:asia-southeast1:panda-ev-core-instance-db-a1"
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
@@ -259,7 +260,7 @@ spec:
     healthyThreshold: 1
     unhealthyThreshold: 2
     type: HTTP
-    port: 5001
+    port: 4003
     requestPath: /health
   timeoutSec: 3600  # 1 h — keep Socket.IO connections alive through the LB
 
@@ -283,7 +284,7 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 5001
+      targetPort: 4003
 
 ---
 # ──────────────────────────────────────────────────────────────────────────────

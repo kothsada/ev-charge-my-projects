@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Structure
 
-This monorepo contains 5 services for a Panda EV (electric vehicle) charging platform. Each service has its own `CLAUDE.md` with service-specific guidance.
+This monorepo contains services for a Panda EV (electric vehicle) charging platform. Each NestJS service has its own `CLAUDE.md` with service-specific guidance.
 
 | Service | Port | Purpose |
 |---------|------|---------|
@@ -12,6 +12,7 @@ This monorepo contains 5 services for a Panda EV (electric vehicle) charging pla
 | `panda-ev-csms-system-admin/` | 4000 | Admin backend — IAM, stations, pricing, CMS |
 | `panda-ev-client-mobile/` | 4001 | Mobile app backend — auth, wallet, charging sessions |
 | `panda-ev-notification/` | 5001 | Notification microservice — FCM push, stats aggregation, admin WS dashboard |
+| `panda-ev-gateway-services/` | — | API gateway / ingress layer |
 | `ocpp-virtual-charge-point/` | N/A | OCPP simulator for testing (1.6, 2.0.1, 2.1) |
 
 ## Commands
@@ -62,13 +63,19 @@ chmod +x generate-service-keys-local.sh
 ./generate-service-keys-local.sh
 # → writes keys to <service>/keys/ in each service; cross-copies peer public keys
 
-# 2. Push secrets to K8s (run from each service directory)
+# 2. QR_SIGNING_SECRET — generate ONCE, export before running Admin + Mobile scripts
+#    Must be the SAME value in both services or QR verification fails at runtime
+export QR_SIGNING_SECRET=$(openssl rand -hex 32)
+
+# 3. Push secrets to K8s (run from each service directory, in same shell session)
 cd panda-ev-csms-system-admin && ./create-secret.sh
-cd panda-ev-client-mobile     && ./create-secret.sh
-cd panda-ev-ocpp              && ./create-secret.sh
+cd ../panda-ev-client-mobile  && ./create-secret.sh
+cd ../panda-ev-ocpp           && ./create-secret.sh
 ```
 
 `generate-service-keys.sh` (monorepo root) is the original version that stores all keys in a single `keys/` directory. `generate-service-keys-local.sh` stores each service's keys inside that service's own `keys/` directory and cross-copies peer public keys automatically — prefer this one.
+
+**Note:** If the shell is closed after generating `QR_SIGNING_SECRET`, the value is lost. Re-export the same value before running both scripts again, otherwise QR signature verification will silently fail in production.
 
 ## Architecture
 
@@ -84,6 +91,8 @@ Mobile App ──► Mobile API (4001) ──► PostgreSQL (panda_ev_core)
     PostgreSQL (panda_ev_ocpp)
 
 Admin Portal ──► Admin System (4000) ──► PostgreSQL (panda_ev_system)
+
+All services ──► Notification (5001) ──► FCM / WebSocket dashboard
 ```
 
 ### RabbitMQ Queues
@@ -200,6 +209,37 @@ Session start flow in Mobile API (`charging-session.service.ts`):
 2. Snapshot entire billing config into Redis at `charging:session:{id}` (8 h TTL)
 3. `OcppConsumerService` reads only from Redis at billing time — never re-queries pricing
 
+### QR Code Charging Flow (Option C Hybrid)
+
+QR codes are generated per-connector by Admin and scanned by the Mobile App to start a session in **1 API call** instead of 5.
+
+**QR URL format:** `pandaev://charge?sid=<base62-22>&cid=<base62-22>&nid=<1-9>&sig=<hmac-16>`
+- `sid`/`cid` = stationId/chargerId encoded as 22-char Base62 (UUID → BigInt → Base62)
+- `nid` = OCPP connector number (1-based)
+- `sig` = `HMAC-SHA256(sid|cid|nid, QR_SIGNING_SECRET).hex.slice(0, 16)` — verified with `timingSafeEqual`
+
+**Cross-service shared secret**: `QR_SIGNING_SECRET` env var must be **identical** in Admin and Mobile. It lives in both `panda-system-api-secrets` and `panda-mobile-api-secrets` K8s secrets. Rotate by changing the value and re-running both `create-secret.sh` scripts. QR codes themselves are permanent (no TTL) — rotation invalidates all existing QRs.
+
+**Admin:** `GET /admin/v1/stations/:id/chargers/:chargerId/connectors/:connectorUuid/qr` (permission: `connectors:read`) → `QrService.getConnectorQr()` in `station/services/qr.service.ts`.
+
+**Mobile endpoints:**
+- `GET /api/mobile/v1/charging-sessions/qr-preview` — verify sig + return live status/pricing preview (no lock, no session)
+- `POST /api/mobile/v1/charging-sessions/qr-start` — full start: verify → decode → resolve Admin DB → per-user lock (30s) → per-charger lock (8h) → wallet check → create session → publish RabbitMQ
+
+**`pricePerKwh` and `stationName` are never accepted from the client** in `qr-start` — always resolved from the Admin DB LATERAL JOIN query.
+
+### FCM Push — Notification Service is the Canonical Sender
+
+Mobile API does **not** call Firebase directly. All push notifications are routed via RabbitMQ:
+
+```
+Mobile API ──publish──► PANDA_EV_NOTIFICATIONS ──► Notification Service ──► FCM
+```
+
+`FcmModule` in Mobile API handles only device token management (`user_fcm_devices` table is in `panda_ev_notifications` schema, owned by Notification Service). Mobile API syncs tokens via `device.registered`/`device.unregistered` events.
+
+Notification Service (`NotificationProcessor`) handles dedup, rate-limiting, FCM delivery, DB logging, stats aggregation, and WebSocket emit — in that order.
+
 ### Mobile — OCPP Consumer DLQ Pattern
 
 `OcppConsumerService` uses `rabbitMQ.consumeWithDlq(OCPP_EVENTS_QUEUE, handler)` instead of `consume()`. On handler throw: retries up to 3× with 5s/30s/120s backoff (tracked via `x-retry-count` AMQP header), then dead-letters to `PANDA_EV_QUEUE_DLX` → `PANDA_EV_QUEUE_DLQ`. Main queue (`PANDA_EV_QUEUE`) is **not** re-asserted with DLX args from Mobile — OCPP owns that assertion. Mobile only asserts the DLX exchange and DLQ queue.
@@ -245,3 +285,7 @@ Cache keys: `cache:{resource}:{md5(params)}`. Per-resource TTLs configured in `c
 ### Docker — Admin Service Entry Point
 
 `panda-ev-csms-system-admin` has no `rootDir` in `tsconfig.json`, so TypeScript preserves `src/` in output. **Production entry is `dist/src/main.js`**, not `dist/main.js`. `docker-entrypoint.sh`: (1) writes `DATABASE_URL` to `/app/.env` (Prisma 7 reads `.env` file, not `process.env`), (2) runs `prisma migrate deploy`, (3) starts `node dist/src/main`.
+
+## Session Documentation Convention
+
+Implementation sessions are saved to `docs/YYYY-MM-DD/YYYY-MM-DDTHH:mm:ss-Topic_Name.md`. Create the date directory first (`mkdir -p docs/$(date +%Y-%m-%d)`), then write the file with timestamp prefix using `date '+%Y-%m-%d %H:%M:%S'`.
