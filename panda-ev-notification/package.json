@@ -31,7 +31,6 @@
     "dotenv": "^17.3.1",
     "firebase-admin": "^13.7.0",
     "ioredis": "^5.9.3",
-    "moment-timezone": "^0.6.0",
     "pg": "^8.18.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

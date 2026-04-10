@@ -145,7 +145,12 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await this.channel.assertQueue(queue, { durable: true });
+      // Use same args as main queue to avoid PRECONDITION-FAILED on re-assert
+      const queueArgs =
+        queue === this.NOTIFICATIONS_QUEUE
+          ? { durable: true, arguments: { 'x-dead-letter-exchange': this.NOTIFICATIONS_DLX } }
+          : { durable: true };
+      await this.channel.assertQueue(queue, queueArgs);
       const content = Buffer.from(JSON.stringify(message));
       this.channel.sendToQueue(queue, content, {
         persistent: true,

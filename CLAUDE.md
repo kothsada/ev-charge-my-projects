@@ -12,7 +12,7 @@ This monorepo contains services for a Panda EV (electric vehicle) charging platf
 | `panda-ev-csms-system-admin/` | 4000 | Admin backend — IAM, stations, pricing, CMS |
 | `panda-ev-client-mobile/` | 4001 | Mobile app backend — auth, wallet, charging sessions |
 | `panda-ev-notification/` | 5001 | Notification microservice — FCM push, stats aggregation, admin WS dashboard |
-| `panda-ev-gateway-services/` | — | API gateway / ingress layer |
+| `panda-ev-gateway-services/` | 4004 | Payment gateway — BCEL OnePay QR integration |
 | `ocpp-virtual-charge-point/` | N/A | OCPP simulator for testing (1.6, 2.0.1, 2.1) |
 
 ## Commands
@@ -112,6 +112,8 @@ All RabbitMQ messages are signed with RS256 `x-service-token` headers. Consumers
 | `PANDA_EV_ADMIN_COMMANDS` | Admin → OCPP | `{ action, commandId, ocppIdentity, ... }` — remote OCPP commands; result written to Redis `ocpp:cmd:result:{commandId}` (90s TTL) |
 | `PANDA_EV_CHARGER_SYNC` | Admin → OCPP | `charger.provisioned\|updated\|decommissioned`, `connector.provisioned\|updated\|decommissioned` — keeps `panda_ev_ocpp.chargers` in sync with admin DB |
 | `message.created` | Chat → Admin | consumed by Admin notification module for push notifications |
+| `PANDA_EV_PAYMENT_COMMANDS` | Mobile → Gateway | Request QR payment creation; optional `idempotencyKey` (24 h dedup) |
+| `PANDA_EV_PAYMENT_EVENTS` | Gateway → all | Payment lifecycle events: `payment.initiated`, `payment.confirmed`, `payment.voided`, `payment.failed`; carry `context` field for consumer filtering |
 
 ### Service-to-Service Security (RS256 JWT)
 
@@ -151,6 +153,8 @@ Each service owns its schema exclusively — no cross-database joins:
 - `panda_ev_ocpp` — Charger, Connector, Transaction, OcppLog
 - `panda_ev_core` — User, Profile, Vehicle, Wallet, ChargingSession, Payment, Invoice, + others
 - `panda_ev_system` — User (admin), Role, Group, Permission, Station, Charger, Connector, Banner, News, PricingTier, + others
+- `panda_ev_noti` — NotificationLog, UserFcmDevice, NotificationTemplate, DeliveryStats (owned by Notification Service)
+- `panda_ev_gateway` — PaymentProvider, Payment, PaymentEvent (owned by Gateway Service)
 
 **Prisma client** is generated to `generated/prisma/` at each service root (not `@prisma/client`). Import path from `src/modules/foo/` (3 levels deep): `../../../generated/prisma/client`.
 
@@ -164,7 +168,7 @@ Charge points connect to `ws://<host>/ocpp/<chargeBoxIdentity>` with subprotocol
 
 **Infrastructure**: Redis (hard requirement — app exits if unreachable at boot), RabbitMQ (soft-fail with warning), PostgreSQL via Prisma.
 
-**URL prefixes**: Admin → `/admin/v1/`, Mobile → `/api/mobile/v1/`, OCPP → WebSocket only.
+**URL prefixes**: Admin → `/api/admin/v1/`, Mobile → `/api/mobile/v1/`, Gateway → `/api/gateway/v1/`, OCPP → WebSocket only.
 
 **API response shape**:
 ```ts
@@ -190,13 +194,29 @@ Translation files: `src/common/i18n/translations/{en,lo,zh}.json`. Add new keys 
 ### Module Inventory
 
 **Admin** (`panda-ev-csms-system-admin/src/modules/`):
-`auth`, `iam` (users/roles/groups/permissions), `cms`, `news`, `notification`, `audit-log`, `system-settings`, `station`, `location`, `pricing`, `mobile-user`, `legal-content`, `enums`, `health`, `cache`
+`auth`, `iam` (users/roles/groups/permissions), `cms`, `news`, `notification`, `audit-log`, `system-settings`, `station`, `location`, `pricing`, `mobile-user`, `legal-content`, `enums`, `health`, `cache`, `upload`
 
 **Mobile** (`panda-ev-client-mobile/src/modules/`):
 `auth`, `profile`, `vehicle`, `wallet`, `charging-session`, `station`, `payment`, `invoice`, `financial`, `content`, `favorite`, `fcm`, `notification`, `app-config`, `enums`, `health`, `cache`, `audit-log`
 
 **OCPP** (`panda-ev-ocpp/src/modules/`):
 `ocpp` (single module — handles all charger WebSocket protocol, auth, and message routing)
+
+**Notification** (`panda-ev-notification/src/modules/`):
+`notification` (processor, router), `fcm` (delivery), `dedup`, `rate-limit`, `device` (FCM token registry), `aggregation` (stats), `template`, `websocket` (admin dashboard), `health`
+
+**Gateway** (`panda-ev-gateway-services/src/modules/`):
+`payment` (only module — BCEL QR initiation, PubNub callback, void, refund, mode switch, reconciliation)
+
+### Gateway Service — BCEL OnePay QR
+
+The Gateway handles all payment integration for the Laos market (LAK currency). It is the only service that talks to BCEL's REST API.
+
+**Flow**: Mobile API (or any service) publishes to `PANDA_EV_PAYMENT_COMMANDS` → Gateway creates QR → payment confirmation arrives via **PubNub** channel `mcid-{mcid}-{shopcode}` → Gateway publishes `payment.confirmed` to `PANDA_EV_PAYMENT_EVENTS`.
+
+**Mode switching** (TEST ↔ PRODUCTION): stored in Redis `gateway:bcel:active_mode`. Switch via `PATCH /api/gateway/v1/payments/bcel/mode`. Both modes subscribe to PubNub at startup.
+
+**Idempotency**: Pass `idempotencyKey` in command payload; server deduplicates for 24 h (Redis). Omitting it auto-generates `{userId}:{provider}:{amount}:{minuteWindow}` — deduplicates within the same 1-minute window.
 
 ### Billing Architecture
 
