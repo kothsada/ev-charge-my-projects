@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { nowBangkokIso } from '../helpers/date.helper';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -40,7 +41,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode,
       data: null,
       message,
-      timestamp: new Date().toISOString(),
+      timestamp: nowBangkokIso(),
     });
   }
 }

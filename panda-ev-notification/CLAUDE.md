@@ -57,6 +57,14 @@ npx ts-node prisma/seed/seed-templates.ts
 | `RABBITMQ_NOTIFICATIONS_DLQ` | `PANDA_EV_NOTIFICATIONS_DLQ` | Dead-letter queue |
 | `RABBITMQ_NOTIFICATIONS_DLX` | `PANDA_EV_NOTIFICATIONS_DLX` | Dead-letter exchange (fanout) |
 | `RABBITMQ_OCPP_EVENTS_QUEUE` | `PANDA_EV_QUEUE` | OCPP events consumed for aggregation only |
+| `RABBITMQ_SMS_QUEUE` | `PANDA_EV_SMS` | SMS send requests from Mobile/CSMS |
+| `RABBITMQ_SMS_DLQ` | `PANDA_EV_SMS_DLQ` | SMS dead-letter queue |
+| `RABBITMQ_SMS_DLX` | `PANDA_EV_SMS_DLX` | SMS dead-letter exchange (fanout) |
+| `LTC_SMS_BASE_URL` | `https://apicenter.laotel.com:9443/api/sms_center` | LTC API base URL |
+| `LTC_SMS_API_KEY` | — | LTC API key (omit for dry-run mode) |
+| `LTC_SMS_HEADER` | `PANDAEV` | Default SMS sender name shown on handset |
+| `LTC_SMS_PARTNER_ID` | `PEV` | Prefix for transaction ID generation |
+| `LTC_ONNET_OPERATOR_PREFIXES` | `205` | Comma-separated LTC operator prefixes — `205` is LTC/Laotel (onnet = 200 LAK; all others = offnet = 300 LAK) |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | — | Option A: JSON key file |
 | `FIREBASE_PROJECT_ID` | — | Option B: individual env vars |
 | `FIREBASE_CLIENT_EMAIL` | — |  |
@@ -82,6 +90,10 @@ Mobile API ──publish──► PANDA_EV_NOTIFICATIONS ──► NotificationR
                           notification.overstay_reminder) │                    → WebSocket emit)
                                                           │
 OCPP CSMS ──publish──► PANDA_EV_QUEUE ──────────────────►│ (aggregation + live dashboard only)
+
+Mobile/CSMS ──publish──► PANDA_EV_SMS ──────────────────► SmsRouter ──► SmsService ──► LTC API
+              (sms.otp / sms.text)                                        (parse phone → detect onnet/offnet
+                                                                           → submit_sms → log → aggregate stats)
            (transaction.started / transaction.stopped)
 ```
 
@@ -99,6 +111,7 @@ OCPP CSMS ──publish──► PANDA_EV_QUEUE ──────────�
 | `aggregation` | `AggregationService` — event-driven UPSERT to hourly/daily stats tables via `$executeRaw` |
 | `websocket` | `AdminStatsGateway` — Socket.IO `/admin-stats` namespace; emits live session + notification events |
 | `device` | `DeviceService` — centralized FCM token CRUD; `DeviceController` — `POST/DELETE/GET /v1/devices` (internal REST) |
+| `sms` | `SmsService` — LTC SMS API client; `SmsRouter` — `PANDA_EV_SMS` queue consumer; `SmsAggregationService` — auto-incremented daily stats; `SmsController` — REST API |
 | `health` | `GET /health` liveness probe |
 
 ### Global modules (inject anywhere, no explicit imports needed)
@@ -155,6 +168,10 @@ Global prefix: `/api/notification` (all routes below are under this prefix). Swa
 | `POST` | `/v1/devices` | Register FCM token (from Mobile API, internal) |
 | `DELETE` | `/v1/devices` | Deactivate FCM token |
 | `GET` | `/v1/devices/:userId` | List devices for a user |
+| `POST` | `/v1/sms/send` | Send SMS directly (bypasses RabbitMQ — for testing in Swagger) |
+| `POST` | `/v1/sms/verify` | Verify SMS delivery via LTC verify_sms (check 5-10 min after send) |
+| `GET` | `/v1/sms/history` | Paginated SMS transaction log with filtering |
+| `GET` | `/v1/sms/stats/daily` | Pre-aggregated daily stats (onnet/offnet counts, amounts, success/fail, OTP/TEXT) |
 
 ### WebSocket admin dashboard
 
@@ -207,6 +224,49 @@ await this.prisma.$executeRaw`
     SET "sessionsStarted" = "station_hourly_stats"."sessionsStarted" + 1
 `;
 ```
+
+### SMS Module
+
+#### LTC API
+
+- **Submit**: `POST {LTC_SMS_BASE_URL}/submit_sms` — `{ transaction_id, header, phoneNumber, message }`
+- **Verify**: `POST {LTC_SMS_BASE_URL}/verify_sms` — `{ SMID }` — check 5-10 min after submit
+- Success response: `resultCode === "20000"` with `SMID` field
+- Dry-run mode: when `LTC_SMS_API_KEY` is unset, calls are skipped and a fake SMID is returned
+
+#### Phone number parsing
+
+`parsePhoneNumber("8562078559999")` →
+- `countryCode = "856"`, `mobileNumber = "2078559999"`, `operator = "207"`
+- Network type determined by operator prefix: onnet (LTC) = 200 LAK, offnet = 300 LAK
+- Configure LTC prefixes via `LTC_ONNET_OPERATOR_PREFIXES` env var (comma-separated 3-digit codes)
+
+#### RabbitMQ message contract (published by Mobile / CSMS)
+
+Queue: `PANDA_EV_SMS` (with DLX `PANDA_EV_SMS_DLX` and DLQ `PANDA_EV_SMS_DLQ`)
+
+```json
+{
+  "routingKey": "sms.otp",
+  "phoneNumber": "8562078559999",
+  "message": "Your OTP is 123456. Valid for 5 minutes.",
+  "header": "PANDAEV",
+  "userId": "uuid-...",
+  "sessionId": "uuid-...",
+  "sourceService": "mobile"
+}
+```
+
+| routingKey | Purpose |
+|---|---|
+| `sms.otp` | One-time password / verification code |
+| `sms.text` | General-purpose text message |
+
+#### Stats schema
+
+`SmsDailyStat` auto-increments on every SMS send via `ON CONFLICT DO UPDATE`. Fields:
+`onnetCount`, `onnetAmountLak`, `offnetCount`, `offnetAmountLak`, `totalCount`, `totalAmountLak`,
+`successCount`, `failCount`, `otpCount`, `textCount`, `uniqueRecipients`
 
 ### Service-to-service JWT
 

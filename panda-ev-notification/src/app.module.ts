@@ -19,6 +19,7 @@ import { AggregationModule } from './modules/aggregation/aggregation.module';
 import { AdminStatsModule } from './modules/websocket/admin-stats.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { DeviceModule } from './modules/device/device.module';
+import { SmsModule } from './modules/sms/sms.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { DeviceModule } from './modules/device/device.module';
     AggregationModule,
     AdminStatsModule,
     DeviceModule,
+    SmsModule,
     NotificationModule,
   ],
   controllers: [AppController],

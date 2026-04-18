@@ -1,0 +1,165 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: panda-notification-api
+  labels:
+    app: panda-notification-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: panda-notification-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: panda-notification-api
+    spec:
+      serviceAccountName: panda-notification-api-ksa
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        # ── NestJS Notification Service ──────────────────────────────────────
+        - name: panda-notification-api
+          image: asia-southeast1-docker.pkg.dev/pandaev/panda-ev-repo/panda-notification-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4003
+
+          envFrom:
+            - configMapRef:
+                name: panda-notification-api-config
+
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: DATABASE_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-rabbitmq-prod-secrets
+                  key: RABBITMQ_URL
+            # LTC SMS API key
+            - name: LTC_SMS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: LTC_SMS_API_KEY
+            # Firebase FCM credentials
+            - name: FIREBASE_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: FIREBASE_PROJECT_ID
+                  optional: true
+            - name: FIREBASE_CLIENT_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: FIREBASE_CLIENT_EMAIL
+                  optional: true
+            - name: FIREBASE_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: FIREBASE_PRIVATE_KEY
+                  optional: true
+            # Service-to-service JWT (RabbitMQ message verification)
+            - name: SERVICE_JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: SERVICE_JWT_PRIVATE_KEY
+            - name: TRUSTED_SERVICE_PUBLIC_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: panda-notification-api-secrets
+                  key: TRUSTED_SERVICE_PUBLIC_KEYS
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4003
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4003
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 4003
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+        # ── Cloud SQL Auth Proxy Sidecar ─────────────────────────────────────
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "--private-ip"
+            - "--health-check"
+            - "--http-address=0.0.0.0"
+            - "PROJECT:REGION:INSTANCE"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: panda-ev-dev
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: panda-system-api
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/1/args/5
+        value: "pandaev:asia-southeast1:panda-ev-csms-system"
+
+configMapGenerator:
+  - name: panda-system-api-config
+    behavior: merge
+    literals:
+      - NODE_ENV="development"
+      - REDIS_HOST="redis-service.panda-ev-dev.svc.cluster.local"
+      - REDIS_URL="redis://redis-service.panda-ev-dev.svc.cluster.local:6379"

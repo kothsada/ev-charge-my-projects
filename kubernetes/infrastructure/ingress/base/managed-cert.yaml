@@ -1,0 +1,9 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: panda-ev-certs
+spec:
+  domains:
+    - DOMAIN_1
+    - DOMAIN_2
+    - DOMAIN_3

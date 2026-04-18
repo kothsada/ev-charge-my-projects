@@ -1,0 +1,205 @@
+ ▐▛███▜▌   Claude Code v2.1.109
+▝▜█████▛▘  Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~/Development/customers/pandaEV
+
+❯ i change notification-service to notification-api                             
+  ⎿  ⧉ Selected 1 lines from generate-service-keys-local.sh in Visual Studio Code
+
+⏺ Let me check the relevant files to understand what needs to be updated.
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+⏺ Let me check the key files that matter for runtime behavior (not docs):
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+⏺ Now I'll update all the runtime-relevant files. Let me read them first:
+
+  Read 3 files (ctrl+o to expand)
+  ⎿  Loaded panda-ev-notification/CLAUDE.md
+
+⏺ Now let me also check the kubernetes kustomization file:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now I have everything. Let me apply all the changes:
+
+⏺ Update(generate-service-keys-local.sh)
+  ⎿  Added 1 line, removed 1 line
+      198  echo "SERVICE_NAME=admin-api"
+      199  echo "SERVICE_JWT_PRIVATE_KEY_PATH=$ADMIN_KEYS/admin.pem"
+      200  echo "TRUSTED_SERVICE_PUBLIC_KEYS_DIR=$ADMIN_KEYS"
+      201 -echo "TRUSTED_SERVICE_ISSUERS=mobile-api:mobile,ocpp-csms:ocpp
+          -,notification-service:notification,gateway-api:gateway"       
+      201 +echo "TRUSTED_SERVICE_ISSUERS=mobile-api:mobile,ocpp-csms:ocpp
+          +,notification-api:notification,gateway-api:gateway"           
+      202  echo "JWT_PRIVATE_KEY_PATH=$ADMIN_KEYS/admin.pem"
+      203  echo "JWT_PUBLIC_KEY_PATH=$ADMIN_KEYS/admin.pub"
+      204  echo ""
+
+⏺ Update(generate-service-keys-local.sh)
+  ⎿  Added 1 line, removed 1 line
+      207  echo "SERVICE_NAME=mobile-api"
+      208  echo "SERVICE_JWT_PRIVATE_KEY_PATH=$MOBILE_KEYS/mobile.pem"
+      209  echo "TRUSTED_SERVICE_PUBLIC_KEYS_DIR=$MOBILE_KEYS"
+      210 -echo "TRUSTED_SERVICE_ISSUERS=admin-api:admin,ocpp-csms:ocpp,n
+          -otification-service:notification,gateway-api:gateway"         
+      210 +echo "TRUSTED_SERVICE_ISSUERS=admin-api:admin,ocpp-csms:ocpp,n
+          +otification-api:notification,gateway-api:gateway"             
+      211  echo "JWT_PRIVATE_KEY_PATH=$MOBILE_KEYS/mobile.pem"
+      212  echo "JWT_PUBLIC_KEY_PATH=$MOBILE_KEYS/mobile.pub"
+      213  echo ""
+
+⏺ Update(generate-service-keys-local.sh)
+  ⎿  Added 1 line, removed 1 line
+      220  echo ""
+      221  
+      222  echo "# panda-ev-notification/.env"
+      223 -echo "SERVICE_NAME=notification-service"                      
+      223 +echo "SERVICE_NAME=notification-api"                          
+      224  echo "SERVICE_JWT_PRIVATE_KEY_PATH=$NOTIF_KEYS/notification.pe
+           m"
+      225  echo "TRUSTED_SERVICE_PUBLIC_KEYS_DIR=$NOTIF_KEYS"
+      226  echo "TRUSTED_SERVICE_ISSUERS=mobile-api:mobile,admin-api:admi
+           n,ocpp-csms:ocpp"
+
+⏺ Update(generate-service-keys-local.sh)
+  ⎿  Added 1 line, removed 1 line
+      242  echo "# panda-ev-csms-system-admin/.env"
+      243  echo "SERVICE_NAME=admin-api"
+      244  echo "SERVICE_JWT_PRIVATE_KEY=$(b64 "$ADMIN_KEYS/admin.pem")"
+      245 -echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"mobile-api\",\"k
+          -ey\":\"${MOBILE_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCP
+          -P_PUB}\"},{\"iss\":\"notification-service\",\"key\":\"${NOTIF_
+          -PUB}\"},{\"iss\":\"gateway-api\",\"key\":\"${GATEWAY_PUB}\"}]"
+      245 +echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"mobile-api\",\"k
+          +ey\":\"${MOBILE_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCP
+          +P_PUB}\"},{\"iss\":\"notification-api\",\"key\":\"${NOTIF_PUB}
+          +\"},{\"iss\":\"gateway-api\",\"key\":\"${GATEWAY_PUB}\"}]"    
+      246  echo "JWT_PRIVATE_KEY=$(b64 "$ADMIN_KEYS/admin.pem")"
+      247  echo "JWT_PUBLIC_KEY=${ADMIN_PUB}"
+      248  echo ""
+
+⏺ Update(generate-service-keys-local.sh)
+  ⎿  Added 1 line, removed 1 line
+      250  echo "# panda-ev-client-mobile/.env"
+      251  echo "SERVICE_NAME=mobile-api"
+      252  echo "SERVICE_JWT_PRIVATE_KEY=$(b64 "$MOBILE_KEYS/mobile.pem")
+           "
+      253 -echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"admin-api\",\"ke
+          -y\":\"${ADMIN_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCPP_
+          -PUB}\"},{\"iss\":\"notification-service\",\"key\":\"${NOTIF_PU
+          -B}\"},{\"iss\":\"gateway-api\",\"key\":\"${GATEWAY_PUB}\"}]"  
+      253 +echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"admin-api\",\"ke
+          +y\":\"${ADMIN_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCPP_
+          +PUB}\"},{\"iss\":\"notification-api\",\"key\":\"${NOTIF_PUB}\"
+          +},{\"iss\":\"gateway-api\",\"key\":\"${GATEWAY_PUB}\"}]"      
+      254  echo "JWT_PRIVATE_KEY=$(b64 "$MOBILE_KEYS/mobile.pem")"
+      255  echo "JWT_PUBLIC_KEY=${MOBILE_PUB}"
+      256  echo ""
+
+⏺ Update(generate-service-keys-local.sh)
+  ⎿  Added 1 line, removed 1 line
+      262  echo ""
+      263  
+      264  echo "# panda-ev-notification/.env"
+      265 -echo "SERVICE_NAME=notification-service"                      
+      265 +echo "SERVICE_NAME=notification-api"                          
+      266  echo "SERVICE_JWT_PRIVATE_KEY=$(b64 "$NOTIF_KEYS/notification.
+           pem")"
+      267  echo "TRUSTED_SERVICE_PUBLIC_KEYS=[{\"iss\":\"mobile-api\",\"k
+           ey\":\"${MOBILE_PUB}\"},{\"iss\":\"admin-api\",\"key\":\"${ADM
+           IN_PUB}\"},{\"iss\":\"ocpp-csms\",\"key\":\"${OCPP_PUB}\"}]"
+      268  echo ""
+
+⏺ Update(panda-ev-notification/src/modules/fcm/fcm.service.ts)
+  ⎿  Added 1 line, removed 1 line
+      43          ) as admin.ServiceAccount;
+      44          this.app = admin.initializeApp({
+      45            credential: admin.credential.cert(serviceAccount),
+      46 -        }, 'notification-service');                            
+      46 +        }, 'notification-api');                                
+      47          this.configured = true;
+      48          this.logger.log('Firebase initialized from service acco
+          unt file');
+      49          return;
+
+⏺ Update(panda-ev-notification/src/modules/fcm/fcm.service.ts)
+  ⎿  Added 1 line, removed 1 line
+      63        try {
+      64          this.app = admin.initializeApp({
+      65            credential: admin.credential.cert({ projectId, client
+          Email, privateKey }),
+      66 -        }, 'notification-service');                            
+      66 +        }, 'notification-api');                                
+      67          this.configured = true;
+      68          this.logger.log('Firebase initialized from environment 
+          variables');
+      69          return;
+
+⏺ Update(panda-ev-notification/src/modules/health/health.controller.ts)
+  ⎿  Added 1 line, removed 1 line
+       9    check() {
+      10      return {
+      11        status: 'ok',
+      12 -      service: 'notification-service',                         
+      12 +      service: 'notification-api',                             
+      13        timestamp: new Date().toISOString(),
+      14      };
+      15    }
+
+⏺ Update(panda-ev-notification/.env.example)
+  ⎿  File must be read first
+
+⏺ Update(kubernetes/services/panda-ev-notification/base/kustomization.yaml)
+  ⎿  Added 1 line, removed 1 line
+      20        - RABBITMQ_NOTIFICATIONS_DLQ="PANDA_EV_NOTIFICATIONS_DLQ"
+      21        - RABBITMQ_NOTIFICATIONS_DLX="PANDA_EV_NOTIFICATIONS_DLX"
+      22        - RABBITMQ_OCPP_EVENTS_QUEUE="PANDA_EV_QUEUE"
+      23 -      - SERVICE_NAME="notification-service"                    
+      23 +      - SERVICE_NAME="notification-api"                        
+      24        - ALLOWED_ORIGINS="*"
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Update(panda-ev-notification/.env.example)
+  ⎿  Added 1 line, removed 1 line
+      1  # Service
+      2  PORT=5001
+      3  NODE_ENV=development
+      4 -SERVICE_NAME=notification-service                               
+      4 +SERVICE_NAME=notification-api                                   
+      5  
+      6  # Database
+      7  DATABASE_URL=postgresql://postgresuser:postgrespassword@localhos
+         t:5432/panda-ev-noti-db?schema=panda_ev_noti&options=-c%20timezo
+         ne%3DAsia%2FVientiane
+⏺ All done. Here's a summary of every file changed:
+
+  File: generate-service-keys-local.sh
+  Change: 6 occurrences — SERVICE_NAME output and
+    TRUSTED_SERVICE_ISSUERS/TRUSTED_SERVICE_PUBLIC_KEYS for admin, mobile, and
+    notification sections
+  ────────────────────────────────────────
+  File: panda-ev-notification/.env.example
+  Change: SERVICE_NAME=notification-api
+  ────────────────────────────────────────
+  File: panda-ev-notification/src/modules/fcm/fcm.service.ts
+  Change: Firebase app name in both init paths
+  ────────────────────────────────────────
+  File: panda-ev-notification/src/modules/health/health.controller.ts
+  Change: Health probe service field
+  ────────────────────────────────────────
+  File: kubernetes/services/panda-ev-notification/base/kustomization.yaml
+  Change: SERVICE_NAME in ConfigMap
+
+  Important reminder: The SERVICE_NAME value is used as the JWT iss claim in
+  inter-service tokens. Peer services (admin, mobile) must have notification-api
+   in their TRUSTED_SERVICE_ISSUERS / TRUSTED_SERVICE_PUBLIC_KEYS — the
+  generate-service-keys-local.sh output now reflects this. If you have existing
+  .env files or K8s secrets with notification-service, update those too before
+  deploying.
+
+✻ Sautéed for 41s
+
+※ recap: Renamed notification-service to notification-api across all runtime files. Next: update any live .env files or existing K8s secrets that still reference the old name. (disable recaps in /config)

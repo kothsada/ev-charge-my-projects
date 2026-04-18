@@ -1,4 +1,13 @@
 import 'dotenv/config';
+// Must be set before any Date construction so Node.js local-time methods reflect Vientiane (UTC+7)
+process.env.TZ = 'Asia/Vientiane';
+
+// BigInt fields (e.g. revenue/amount LAK columns from Prisma BigInt) are not JSON-serializable
+// by default. Serialize them as strings so Express res.json() never throws.
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
+  return this.toString();
+};
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';

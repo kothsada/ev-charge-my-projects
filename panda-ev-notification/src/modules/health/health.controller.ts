@@ -9,7 +9,7 @@ export class HealthController {
   check() {
     return {
       status: 'ok',
-      service: 'notification-service',
+      service: 'notification-api',
       timestamp: new Date().toISOString(),
     };
   }

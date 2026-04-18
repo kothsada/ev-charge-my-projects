@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: panda-ocpp-api
+  labels:
+    app: panda-ocpp-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: panda-ocpp-api
+  # RollingUpdate: ສ້າງ pod ໃໝ່ກ່ອນ, ລຶບ pod ເກົ່າຫຼັງ → charger ຮັບ downtime ໜ້ອຍກວ່າ Recreate
+  # Recreate: ລຶບທຸກ pod ພ້ອມກັນ → ທຸກ 100 charger disconnect ພ້ອມກັນ (ບໍ່ດີ)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # ອະນຸຍາດ pod ໃໝ່ 1 ຕົວລໍຖ້າ boot ກ່ອນ
+      maxUnavailable: 0  # ຢ່າ terminate pod ເກົ່າຈົນກ່ວາ pod ໃໝ່ ready
+  template:
+    metadata:
+      labels:
+        app: panda-ocpp-api
+    spec:
+      serviceAccountName: panda-ocpp-api-ksa
+      # ໃຫ້ charger ທີ່ disconnect ໄດ້ reconnect ກ່ອນ pod ຖືກ terminate
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: panda-ocpp-api
+          image: asia-southeast1-docker.pkg.dev/pandaev/panda-ev-repo/panda-ocpp-api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: ws
+              containerPort: 4002
+          envFrom:
+            - configMapRef:
+                name: panda-ocpp-api-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-ocpp-api-secrets
+                  key: DATABASE_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-rabbitmq-prod-secrets
+                  key: RABBITMQ_URL
+            - name: SERVICE_JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-ocpp-api-secrets
+                  key: SERVICE_JWT_PRIVATE_KEY
+            - name: TRUSTED_SERVICE_PUBLIC_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: panda-ocpp-api-secrets
+                  key: TRUSTED_SERVICE_PUBLIC_KEYS
+
+          # startupProbe: ກວດວ່າ app boot ສຳເລັດ (ເຮັດວຽກກ່ອນ liveness)
+          # 24 × 5s = 2 ນາທີ boot timeout ສູງສຸດ
+          startupProbe:
+            tcpSocket:
+              port: 4002
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 24
+            timeoutSeconds: 5
+
+          # readinessProbe: ກວດວ່າ pod ພ້ອມຮັບ WebSocket connections
+          # fail → ຢຸດ route traffic ມາ (ບໍ່ restart)
+          readinessProbe:
+            tcpSocket:
+              port: 4002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          # livenessProbe: ກວດວ່າ pod ບໍ່ freeze (ເຮັດວຽກຫຼັງ startupProbe success)
+          # timeout 10s ໃຫ້ Node.js ເວລາ ຖ້າ busy ຮັບ MeterValues ຫຼາຍຕົວພ້ອມກັນ
+          # 3 × 30s = 90s tolerate ກ່ອນ restart
+          livenessProbe:
+            tcpSocket:
+              port: 4002
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 10
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.2
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "--private-ip"
+            - "--health-check"
+            - "--http-address=0.0.0.0"
+            - "REPLACE_WITH_INSTANCE_CONNECTION_NAME"
+          securityContext:
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"

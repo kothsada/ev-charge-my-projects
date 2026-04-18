@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: panda-ev-prod
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: panda-system-api
+    patch: |-
+      # 1. Update Master Proxy (Port 5432)
+      - op: replace
+        path: /spec/template/spec/containers/1/name
+        value: cloud-sql-proxy-master
+      - op: replace
+        path: /spec/template/spec/containers/1/args
+        value:
+          - "--structured-logs"
+          - "--port=5432"
+          - "--private-ip"
+          - "--health-check"
+          - "--http-address=0.0.0.0"
+          - "pandaev:asia-southeast1:panda-ev-instance-system-db-a2"
+
+      # 2. Increase Main App Resources
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "2000m"
+
+configMapGenerator:
+  - name: panda-system-api-config
+    behavior: merge
+    literals:
+      - NODE_ENV="production"
+      - SWAGGER_ENABLED="true"
+      - REDIS_HOST="10.231.221.4"
+      - REDIS_URL="redis://10.231.221.4:6379"
+      - DATABASE_URL="postgresql://panda_admin_user:PASSWORD@127.0.0.1:5432/panda_ev_system?schema=panda_ev_system"

@@ -2,7 +2,7 @@ apiVersion: networking.gke.io/v1
 kind: ManagedCertificate
 metadata:
   name: panda-ev-certs
-  namespace: panda-ev
+  namespace: panda-ev-prod
 spec:
   domains:
     - admin-api.pandaev.cc

@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: panda-mobile-api
+  labels:
+    app: panda-mobile-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: panda-mobile-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: panda-mobile-api
+    spec:
+      serviceAccountName: panda-mobile-api-ksa
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: panda-mobile-api
+          image: asia-southeast1-docker.pkg.dev/pandaev/panda-ev-repo/panda-mobile-api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 4001
+          envFrom:
+            - configMapRef:
+                name: panda-mobile-api-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: JWT_SECRET
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: JWT_REFRESH_SECRET
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: RABBITMQ_URL
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: SMTP_PASS
+                  optional: true
+            - name: JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: JWT_PRIVATE_KEY
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: JWT_PUBLIC_KEY
+            - name: SERVICE_JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: SERVICE_JWT_PRIVATE_KEY
+            - name: TRUSTED_SERVICE_PUBLIC_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: TRUSTED_SERVICE_PUBLIC_KEYS
+            - name: QR_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: QR_SIGNING_SECRET
+            - name: SYSTEM_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-mobile-api-secrets
+                  key: SYSTEM_DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 5
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 4001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--structured-logs"
+            - "--private-ip"
+            - "--health-check"
+            - "--http-address=0.0.0.0"
+            - "REPLACE_WITH_INSTANCE_CONNECTION_NAME_CORE"
+            - "REPLACE_WITH_INSTANCE_CONNECTION_NAME_SYSTEM"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

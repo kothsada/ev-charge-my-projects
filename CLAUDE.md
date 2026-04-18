@@ -114,6 +114,7 @@ All RabbitMQ messages are signed with RS256 `x-service-token` headers. Consumers
 | `message.created` | Chat → Admin | consumed by Admin notification module for push notifications |
 | `PANDA_EV_PAYMENT_COMMANDS` | Mobile → Gateway | Request QR payment creation; optional `idempotencyKey` (24 h dedup) |
 | `PANDA_EV_PAYMENT_EVENTS` | Gateway → all | Payment lifecycle events: `payment.initiated`, `payment.confirmed`, `payment.voided`, `payment.failed`; carry `context` field for consumer filtering |
+| `PANDA_EV_SMS` | Mobile/Admin → Notification | SMS send requests: `{ routingKey: 'sms.otp'\|'sms.text', phoneNumber, message, header?, userId?, sessionId?, sourceService }` |
 
 ### Service-to-Service Security (RS256 JWT)
 

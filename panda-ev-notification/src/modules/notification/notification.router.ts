@@ -26,9 +26,12 @@ export class NotificationRouter implements OnModuleInit {
       (msg) => this.handleNotificationMessage(msg),
     );
 
-    // 2. OCPP events queue (for aggregation + live dashboard updates only)
+    // 2. OCPP events queue (for aggregation + live dashboard updates only).
+    // Uses a dedicated queue (PANDA_EV_QUEUE_NOTI) so Notification Service never
+    // competes with Mobile API on PANDA_EV_QUEUE — OCPP fanout exchange delivers
+    // a full copy of every event to both queues independently.
     await this.rabbitMQ.consume(
-      process.env.RABBITMQ_OCPP_EVENTS_QUEUE ?? 'PANDA_EV_QUEUE',
+      process.env.RABBITMQ_OCPP_EVENTS_NOTI_QUEUE ?? 'PANDA_EV_QUEUE_NOTI',
       (msg) => this.handleOcppEvent(msg),
     );
   }

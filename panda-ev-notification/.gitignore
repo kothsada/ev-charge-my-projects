@@ -20,6 +20,9 @@ logs/
 *.log
 npm-debug.log*
 
+#secret files
+create-secret.sh
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: panda-ev-prod
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: panda-notification-api
+    patch: |-
+      # 1. Update Master Proxy (Port 5432)
+      - op: replace
+        path: /spec/template/spec/containers/1/name
+        value: cloud-sql-proxy-master
+      - op: replace
+        path: /spec/template/spec/containers/1/args
+        value:
+          - "--structured-logs"
+          - "--port=5432"
+          - "--private-ip"
+          - "--health-check"
+          - "--http-address=0.0.0.0"
+          - "pandaev:asia-southeast1:panda-ev-instance-core-db-a2"
+
+configMapGenerator:
+  - name: panda-notification-api-config
+    behavior: merge
+    literals:
+      - NODE_ENV="production"
+      - SWAGGER_ENABLED="true"
+      - REDIS_URL="redis://10.231.221.4:6379"
+      - DATABASE_URL="postgresql://panda_noti_user:PASSWORD@127.0.0.1:5432/panda_ev_core?schema=panda_ev_noti"

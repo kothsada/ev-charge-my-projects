@@ -1,6 +1,7 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { nowBangkokIso } from '../helpers/date.helper';
 
 interface ResponseShape {
   success: boolean;
@@ -33,7 +34,7 @@ export class ResponseInterceptor implements NestInterceptor {
           statusCode,
           data: data ?? null,
           message: 'Success',
-          timestamp: new Date().toISOString(),
+          timestamp: nowBangkokIso(),
         };
       }),
     );

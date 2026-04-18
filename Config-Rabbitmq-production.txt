@@ -1,0 +1,192 @@
+❯ cd Development/customers/pandaEV/panda-ev-csms-system-admin
+❯ helm repo add bitnami https://charts.bitnami.com/bitnami
+zsh: command not found: helm
+❯ brew install helm
+✔︎ JSON API cask.jws.json                                                        Downloaded   15.4MB/ 15.4MB
+✔︎ JSON API formula.jws.json                                                     Downloaded   32.0MB/ 32.0MB
+==> Fetching downloads for: helm
+✔︎ Bottle Manifest helm (4.1.4)                                                  Downloaded    7.4KB/  7.4KB
+✔︎ Bottle helm (4.1.4)                                                           Downloaded   18.1MB/ 18.1MB
+==> Pouring helm--4.1.4.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/helm/4.1.4: 69 files, 61.3MB
+==> Running `brew cleanup helm`...
+Disable this behaviour by setting `HOMEBREW_NO_INSTALL_CLEANUP=1`.
+Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
+==> Caveats
+zsh completions have been installed to:
+  /opt/homebrew/share/zsh/site-functions
+❯ kubectl get all -n panda-ev-prod
+NAME                                          READY   STATUS    RESTARTS      AGE
+pod/panda-gateway-api-7769cccfd8-fcl4x        2/2     Running   0             13h
+pod/panda-gateway-api-7769cccfd8-hxq2w        2/2     Running   0             13h
+pod/panda-mobile-api-6d755ccd85-8ghbm         3/3     Running   0             15h
+pod/panda-mobile-api-6d755ccd85-9mvgn         3/3     Running   0             15h
+pod/panda-notification-api-5766744d48-ffzv8   2/2     Running   2 (13h ago)   13h
+pod/panda-notification-api-5766744d48-kq6vn   2/2     Running   1 (13h ago)   13h
+pod/panda-ocpp-api-65856469c-xg4mh            3/3     Running   0             17h
+pod/panda-system-api-bd7d9bbd9-sdsz6          2/2     Running   0             15h
+pod/panda-system-api-bd7d9bbd9-sgc2h          2/2     Running   0             15h
+
+NAME                                     TYPE           CLUSTER-IP       EXTERNAL-IP      PORT(S)                      AGE
+service/panda-gateway-api-service        ClusterIP      34.118.227.65    <none>           80/TCP                       14h
+service/panda-mobile-api-service         ClusterIP      34.118.239.144   <none>           80/TCP                       20h
+service/panda-notification-api-service   ClusterIP      34.118.230.136   <none>           80/TCP                       13h
+service/panda-ocpp-api-service           ClusterIP      34.118.235.115   <none>           4002/TCP                     22h
+service/panda-ocpp-external-service      LoadBalancer   34.118.227.188   35.240.145.241   80:31562/TCP,443:32603/TCP   22h
+service/panda-system-api-service         ClusterIP      34.118.237.11    <none>           80/TCP                       15h
+
+NAME                                     READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/panda-gateway-api        2/2     2            2           14h
+deployment.apps/panda-mobile-api         2/2     2            2           20h
+deployment.apps/panda-notification-api   2/2     2            2           13h
+deployment.apps/panda-ocpp-api           1/1     1            1           22h
+deployment.apps/panda-system-api         2/2     2            2           15h
+
+NAME                                                DESIRED   CURRENT   READY   AGE
+replicaset.apps/panda-gateway-api-54dd6c66cd        0         0         0       14h
+replicaset.apps/panda-gateway-api-7769cccfd8        2         2         2       13h
+replicaset.apps/panda-gateway-api-b5dd7df4c         0         0         0       14h
+replicaset.apps/panda-mobile-api-5f5f467bcf         0         0         0       19h
+replicaset.apps/panda-mobile-api-665df979f9         0         0         0       19h
+replicaset.apps/panda-mobile-api-6d755ccd85         2         2         2       15h
+replicaset.apps/panda-mobile-api-77d4774494         0         0         0       17h
+replicaset.apps/panda-mobile-api-7ffc696bbb         0         0         0       20h
+replicaset.apps/panda-mobile-api-86457cbf8          0         0         0       18h
+replicaset.apps/panda-mobile-api-86698bd77c         0         0         0       19h
+replicaset.apps/panda-notification-api-5766744d48   2         2         2       13h
+replicaset.apps/panda-ocpp-api-554644798f           0         0         0       22h
+replicaset.apps/panda-ocpp-api-556bc8b45f           0         0         0       21h
+replicaset.apps/panda-ocpp-api-57958d7d5            0         0         0       21h
+replicaset.apps/panda-ocpp-api-5b769f46dd           0         0         0       22h
+replicaset.apps/panda-ocpp-api-5bd888b49f           0         0         0       21h
+replicaset.apps/panda-ocpp-api-65856469c            1         1         1       17h
+replicaset.apps/panda-ocpp-api-6bfc9cb8fd           0         0         0       21h
+replicaset.apps/panda-system-api-58d6bf554f         0         0         0       15h
+replicaset.apps/panda-system-api-7c9dd89d77         0         0         0       15h
+replicaset.apps/panda-system-api-7cfc6d5dfd         0         0         0       15h
+replicaset.apps/panda-system-api-bd7d9bbd9          2         2         2       15h
+
+NAME                                                             REFERENCE                           TARGETS                        MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/panda-gateway-api-hpa        Deployment/panda-gateway-api        cpu: 0%/70%, memory: 29%/80%   2         5         2          14h
+horizontalpodautoscaler.autoscaling/panda-mobile-api-hpa         Deployment/panda-mobile-api         cpu: 0%/70%, memory: 16%/80%   2         5         2          20h
+horizontalpodautoscaler.autoscaling/panda-notification-api-hpa   Deployment/panda-notification-api   cpu: 0%/70%, memory: 25%/80%   2         4         2          13h
+horizontalpodautoscaler.autoscaling/panda-system-api-hpa         Deployment/panda-system-api         cpu: 0%/70%, memory: 18%/80%   2         5         2          15h
+❯ helm repo add bitnami https://charts.bitnami.com/bitnami
+"bitnami" has been added to your repositories
+❯ helm repo update
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "bitnami" chart repository
+Update Complete. ⎈Happy Helming!⎈
+helm install panda-rabbitmq bitnami/rabbitmq \
+  --namespace panda-ev-prod \
+  --create-namespace \
+  --set global.security.allowInsecureImages=true \
+  --set image.registry=public.ecr.aws \
+  --set image.repository=bitnami/rabbitmq \
+  --set image.tag=4.0 \
+  --set volumePermissions.image.registry=public.ecr.aws \
+  --set volumePermissions.image.repository=bitnami/os-shell \
+  --set volumePermissions.image.tag=12-debian-12-r1 \
+  --set auth.existingPasswordSecret=panda-rabbitmq-prod-secrets \
+  --set auth.usePasswordFiles=false \
+  --set persistence.enabled=true \
+  --set persistence.size=20Gi \
+  --set persistence.storageClass=premium-rwo \
+  --set replicaCount=1 \
+  --set resources.requests.cpu=500m \
+  --set resources.requests.memory=1Gi \
+  --set resources.limits.cpu=1000m \
+  --set resources.limits.memory=2Gi \
+  --set livenessProbe.exec.command='{ "rabbitmq-diagnostics", "-q", "check_running" }' \
+  --set readinessProbe.exec.command='{ "rabbitmq-diagnostics", "-q", "check_running" }'
+NAME: panda-rabbitmq
+LAST DEPLOYED: Thu Apr 16 18:12:09 2026
+NAMESPACE: panda-ev-prod
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+NOTES:
+CHART NAME: rabbitmq
+CHART VERSION: 16.0.14
+APP VERSION: 4.1.3
+
+⚠ WARNING: Since August 28th, 2025, only a limited subset of images/charts are available for free.
+    Subscribe to Bitnami Secure Images to receive continued support and security updates.
+    More info at https://bitnami.com and https://github.com/bitnami/containers/issues/83267** Please be patient while the chart is being deployed **
+
+Credentials:
+    echo "Username      : user"
+    echo "Password      : $(kubectl get secret --namespace panda-ev-prod panda-rabbitmq-prod-secrets -o jsonpath="{.data.rabbitmq-password}" | base64 -d)"
+    echo "ErLang Cookie : $(kubectl get secret --namespace panda-ev-prod panda-rabbitmq -o jsonpath="{.data.rabbitmq-erlang-cookie}" | base64 -d)"
+
+Note that the credentials are saved in persistent volume claims and will not be changed upon upgrade or reinstallation unless the persistent volume claim has been deleted. If this is not the first installation of this chart, the credentials may not be valid.
+This is applicable when no passwords are set and therefore the random password is autogenerated. In case of using a fixed password, you should specify it when upgrading.
+More information about the credentials may be found at https://docs.bitnami.com/general/how-to/troubleshoot-helm-chart-issues/#credential-errors-while-upgrading-chart-releases.
+
+RabbitMQ can be accessed within the cluster on port 5672 at panda-rabbitmq.panda-ev-prod.svc.cluster.local
+
+To access for outside the cluster, perform the following steps:
+
+To Access the RabbitMQ AMQP port:
+
+    echo "URL : amqp://127.0.0.1:5672/"
+    kubectl port-forward --namespace panda-ev-prod svc/panda-rabbitmq 5672:5672
+
+To Access the RabbitMQ Management interface:
+
+    echo "URL : http://127.0.0.1:15672/"
+    kubectl port-forward --namespace panda-ev-prod svc/panda-rabbitmq 15672:15672
+WARNING: Rolling tag detected (bitnami/rabbitmq:4.0), please note that it is strongly recommended to avoid using rolling tags in a production environment.
++info https://techdocs.broadcom.com/us/en/vmware-tanzu/application-catalog/tanzu-application-catalog/services/tac-doc/apps-tutorials-understand-rolling-tags-containers-index.html
+
+⚠ SECURITY WARNING: Original containers have been substituted. This Helm chart was designed, tested, and validated on multiple platforms using a specific set of Bitnami and Tanzu Application Catalog containers. Substituting other containers is likely to cause degraded security and performance, broken chart features, and missing environment variables.
+
+Substituted images detected:
+  - public.ecr.aws/bitnami/rabbitmq:4.0
+  - public.ecr.aws/bitnami/os-shell:12-debian-12-r1
+
+⚠ SECURITY WARNING: Verifying original container images was skipped. Please note this Helm chart was designed, tested, and validated on multiple platforms using a specific set of Bitnami and Tanzu Application Catalog containers. Substituting other containers is likely to cause degraded security and performance, broken chart features, and missing environment variables.
+❯ kubectl get pods -n panda-ev-prod
+NAME                                      READY   STATUS    RESTARTS      AGE
+panda-gateway-api-7769cccfd8-fcl4x        2/2     Running   0             14h
+panda-gateway-api-7769cccfd8-hxq2w        2/2     Running   0             14h
+panda-mobile-api-6d755ccd85-8ghbm         3/3     Running   0             15h
+panda-mobile-api-6d755ccd85-9mvgn         3/3     Running   0             15h
+panda-notification-api-5766744d48-ffzv8   2/2     Running   2 (13h ago)   13h
+panda-notification-api-5766744d48-kq6vn   2/2     Running   1 (13h ago)   13h
+panda-ocpp-api-65856469c-xg4mh            3/3     Running   0             17h
+panda-rabbitmq-0                          0/1     Pending   0             96s
+panda-system-api-bd7d9bbd9-sdsz6          2/2     Running   0             15h
+panda-system-api-bd7d9bbd9-sgc2h          2/2     Running   0             15h
+❯ kubectl get pvc -n panda-ev-prod
+NAME                    STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+data-panda-rabbitmq-0   Pending                                      premium-rwo    <unset>                 115s
+❯ kubectl get pods -n panda-ev-prod
+NAME                                      READY   STATUS    RESTARTS      AGE
+panda-gateway-api-7769cccfd8-fcl4x        2/2     Running   0             14h
+panda-gateway-api-7769cccfd8-hxq2w        2/2     Running   0             14h
+panda-mobile-api-6d755ccd85-8ghbm         3/3     Running   0             15h
+panda-mobile-api-6d755ccd85-9mvgn         3/3     Running   0             15h
+panda-notification-api-5766744d48-ffzv8   2/2     Running   2 (13h ago)   13h
+panda-notification-api-5766744d48-kq6vn   2/2     Running   1 (13h ago)   13h
+panda-ocpp-api-65856469c-xg4mh            3/3     Running   0             17h
+panda-rabbitmq-0                          0/1     Pending   0             2m15s
+panda-system-api-bd7d9bbd9-sdsz6          2/2     Running   0             15h
+panda-system-api-bd7d9bbd9-sgc2h          2/2     Running   0             15h
+❯ kubectl get pods -n panda-ev-prod
+NAME                                      READY   STATUS    RESTARTS      AGE
+panda-gateway-api-7769cccfd8-fcl4x        2/2     Running   0             14h
+panda-gateway-api-7769cccfd8-hxq2w        2/2     Running   0             14h
+panda-mobile-api-6d755ccd85-8ghbm         3/3     Running   0             15h
+panda-mobile-api-6d755ccd85-9mvgn         3/3     Running   0             15h
+panda-notification-api-5766744d48-ffzv8   2/2     Running   2 (13h ago)   13h
+panda-notification-api-5766744d48-kq6vn   2/2     Running   1 (13h ago)   13h
+panda-ocpp-api-65856469c-xg4mh            3/3     Running   0             17h
+panda-rabbitmq-0                          0/1     Pending   0             6m19s
+panda-system-api-bd7d9bbd9-sdsz6          2/2     Running   0             15h
+panda-system-api-bd7d9bbd9-sgc2h          2/2     Running   0             15h
+❯ kubectl get pvc -n panda-ev-prod
+NAME                    STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+data-panda-rabbitmq-0   Pending                                      premium-rwo    <unset>                 6m27s
+

@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: panda-ocpp-api-pdb
+spec:
+  # maxUnavailable: 1 — ອະນຸຍາດ 1 pod ຖືກ disrupt (node drain, upgrade)
+  # ໃຊ້ maxUnavailable ແທນ minAvailable ເພາະ replicas=1
+  # (minAvailable: 1 ຈະ block node drain ທັງໝົດ)
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: panda-ocpp-api

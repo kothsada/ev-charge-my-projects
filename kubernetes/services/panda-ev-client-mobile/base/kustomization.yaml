@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - serviceaccount.yaml
+  - backendconfig.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: panda-mobile-api-config
+    literals:
+      - PORT="4001"
+      - JWT_ACCESS_EXPIRES_IN="1d"
+      - JWT_REFRESH_EXPIRES_IN="30d"
+      - RABBITMQ_OCPP_COMMANDS_QUEUE="PANDA_EV_CSMS_COMMANDS"
+      - RABBITMQ_OCPP_EVENTS_QUEUE="PANDA_EV_QUEUE"
+      - RABBITMQ_SYSTEM_EVENTS_QUEUE="PANDA_EV_SYSTEM_EVENTS"
+      - RABBITMQ_USER_EVENTS_QUEUE="PANDA_EV_USER_EVENTS"
+      - RABBITMQ_OCPP_EVENTS_DLQ="PANDA_EV_QUEUE_DLQ"
+      - RABBITMQ_OCPP_EVENTS_DLX="PANDA_EV_QUEUE_DLX"
+      - SERVICE_NAME="mobile-api"
+      - ALLOWED_ORIGINS="*"
+      - MIN_CHARGING_BALANCE="10000"
+      - GCS_BUCKET_NAME="panda-ev-storage"
+      - GCS_PROJECT_ID="pandaev"
+      - SMTP_HOST="smtp.resend.com"
+      - SMTP_PORT="465"
+      - SMTP_SECURE="true"
+      - SMTP_USER="resend"
+      - SMTP_FROM="Panda EV Hub <noreply@panda-ev.com>"

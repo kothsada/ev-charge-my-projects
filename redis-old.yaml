@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    autopilot.gke.io/resource-adjustment: '{"input":{"containers":[{"limits":{"cpu":"300m","memory":"256Mi"},"requests":{"cpu":"100m","memory":"128Mi"},"name":"redis"}]},"output":{"containers":[{"limits":{"cpu":"300m","ephemeral-storage":"1Gi","memory":"256Mi"},"requests":{"cpu":"100m","ephemeral-storage":"1Gi","memory":"128Mi"},"name":"redis"}]},"computeClassAtAdmission":"Default","modified":true}'
+    autopilot.gke.io/warden-version: 34.45.0-gke.3
+    deployment.kubernetes.io/revision: "2"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"redis"},"name":"redis","namespace":"panda-ev"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"redis"}},"strategy":{"type":"Recreate"},"template":{"metadata":{"labels":{"app":"redis"}},"spec":{"containers":[{"image":"asia-southeast1-docker.pkg.dev/pandaev/panda-ev-repo/redis:dev","imagePullPolicy":"Always","livenessProbe":{"exec":{"command":["redis-cli","ping"]},"failureThreshold":3,"initialDelaySeconds":15,"periodSeconds":20},"name":"redis","ports":[{"containerPort":6379}],"readinessProbe":{"exec":{"command":["redis-cli","ping"]},"failureThreshold":3,"initialDelaySeconds":5,"periodSeconds":10},"resources":{"limits":{"cpu":"300m","memory":"256Mi"},"requests":{"cpu":"100m","memory":"128Mi"}},"volumeMounts":[{"mountPath":"/data","name":"redis-data"}]}],"volumes":[{"name":"redis-data","persistentVolumeClaim":{"claimName":"redis-data-pvc"}}]}}}}
+  creationTimestamp: "2026-03-16T04:07:23Z"
+  generation: 2
+  labels:
+    app: redis
+  name: redis
+  namespace: panda-ev
+  resourceVersion: "1774843073170543023"
+  uid: 4c08b79e-5303-4911-8d8c-c2df8822e7f2
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: redis
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2026-03-16T14:35:34+07:00"
+      labels:
+        app: redis
+    spec:
+      containers:
+      - image: asia-southeast1-docker.pkg.dev/pandaev/panda-ev-repo/redis:dev
+        imagePullPolicy: Always
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          failureThreshold: 3
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: redis
+        ports:
+        - containerPort: 6379
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          failureThreshold: 3
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 300m
+            ephemeral-storage: 1Gi
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            ephemeral-storage: 1Gi
+            memory: 128Mi
+        securityContext:
+          capabilities:
+            drop:
+            - NET_RAW
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /data
+          name: redis-data
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - effect: NoSchedule
+        key: kubernetes.io/arch
+        operator: Equal
+        value: amd64
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-data-pvc
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2026-03-16T07:28:08Z"
+    lastUpdateTime: "2026-03-16T07:35:53Z"
+    message: ReplicaSet "redis-58f5dd6949" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2026-03-30T03:57:53Z"
+    lastUpdateTime: "2026-03-30T03:57:53Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 2
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1

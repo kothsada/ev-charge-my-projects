@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - serviceaccount.yaml
+  - backendconfig.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: panda-system-api-config
+    literals:
+      - PORT="4000"
+      - DB_HOST="127.0.0.1"
+      - DB_PORT="5432"
+      - GCS_BUCKET_NAME="panda-ev-storage"
+      - GCS_PROJECT_ID="pandaev"
+      - JWT_ACCESS_EXPIRES_IN="7d"
+      - JWT_REFRESH_EXPIRES_IN="7d"
+      - SWAGGER_ENABLED="false"
+      - SERVICE_NAME="admin-api"
+      - ALLOWED_ORIGINS="*"
+      - RABBITMQ_USER_EVENTS_QUEUE="PANDA_EV_USER_EVENTS"

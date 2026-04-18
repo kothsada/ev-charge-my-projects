@@ -43,7 +43,7 @@ export class FcmService implements OnModuleInit {
         ) as admin.ServiceAccount;
         this.app = admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
-        }, 'notification-service');
+        }, 'notification-api');
         this.configured = true;
         this.logger.log('Firebase initialized from service account file');
         return;
@@ -63,7 +63,7 @@ export class FcmService implements OnModuleInit {
       try {
         this.app = admin.initializeApp({
           credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
-        }, 'notification-service');
+        }, 'notification-api');
         this.configured = true;
         this.logger.log('Firebase initialized from environment variables');
         return;

@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: panda-ev-prod
+
+resources:
+  # 1. Infrastructure (Global)
+  - ../../infrastructure/ingress/overlays/prod
+  # 2. Stateful Services
+  - ../../infrastructure/stateful/redis/overlays/prod
+  - ../../infrastructure/stateful/rabbitmq/overlays/prod
+  # 3. Application Services
+  - ../../services/panda-ev-client-mobile/overlays/prod
+  - ../../services/panda-ev-csms-system-admin/overlays/prod
+  - ../../services/panda-ev-gateway-services/overlays/prod
+  - ../../services/panda-ev-notification/overlays/prod
+  - ../../services/panda-ocpp-api/overlays/prod
+
+generatorOptions:
+  disableNameSuffixHash: true

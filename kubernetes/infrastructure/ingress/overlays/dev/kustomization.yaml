@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: panda-ev-dev
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: ManagedCertificate
+      name: panda-ev-certs
+    patch: |-
+      - op: replace
+        path: /spec/domains
+        value:
+          - dev-admin-api.pandaev.cc
+          - dev-api.pandaev.cc
+          - dev-gateway-api.pandaev.cc
+  - target:
+      kind: Ingress
+      name: panda-ev-ingress
+    patch: |-
+      - op: remove
+        path: /metadata/annotations/kubernetes.io~1ingress.global-static-ip-name
+      - op: replace
+        path: /spec/rules/0/host
+        value: dev-admin-api.pandaev.cc
+      - op: replace
+        path: /spec/rules/1/host
+        value: dev-api.pandaev.cc
+      - op: replace
+        path: /spec/rules/2/host
+        value: dev-gateway-api.pandaev.cc

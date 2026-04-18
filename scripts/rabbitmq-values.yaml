@@ -1,0 +1,66 @@
+auth:
+  existingErlangSecret: panda-rabbitmq-prod-secrets
+  existingErlangSecretKey: rabbitmq-erlang-cookie
+  existingPasswordSecret: panda-rabbitmq-prod-secrets
+  existingPasswordSecretKey: rabbitmq-password
+  usePasswordFiles: false
+
+global:
+  security:
+    allowInsecureImages: true
+
+image:
+  registry: public.ecr.aws
+  repository: bitnami/rabbitmq
+  tag: "4.0"
+
+replicaCount: 1
+
+# Use customLivenessProbe / customReadinessProbe so Bitnami's chart template
+# does NOT append its own curl-based exec block on top of ours.
+# (livenessProbe.exec gets merged then overwritten by the chart's own template.)
+customLivenessProbe:
+  exec:
+    command:
+      - rabbitmq-diagnostics
+      - -q
+      - check_running
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 6
+  successThreshold: 1
+
+customReadinessProbe:
+  exec:
+    command:
+      - rabbitmq-diagnostics
+      - -q
+      - check_running
+  initialDelaySeconds: 20
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+# Remove the livenessProbe / readinessProbe keys — leave them at chart defaults
+# so the chart only uses our customXxxProbe overrides above.
+
+persistence:
+  enabled: true
+  size: 20Gi
+  storageClass: premium-rwo
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+volumePermissions:
+  image:
+    registry: public.ecr.aws
+    repository: bitnami/os-shell
+    tag: 12-debian-12-r1

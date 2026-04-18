@@ -1,0 +1,41 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: panda-ev-ingress
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "REPLACE_ME_IP"
+    networking.gke.io/managed-certificates: "panda-ev-certs"
+    kubernetes.io/ingress.allow-http: "true"
+spec:
+  rules:
+    - host: DOMAIN_1
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: panda-system-api-service
+                port:
+                  number: 80
+    - host: DOMAIN_2
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: panda-mobile-api-service
+                port:
+                  number: 80
+    - host: DOMAIN_3
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: panda-gateway-api-service
+                port:
+                  number: 80

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: panda-notification-api-service
+  labels:
+    app: panda-notification-api
+  annotations:
+    cloud.google.com/backend-config: '{"default": "panda-notification-api-backendconfig"}'
+spec:
+  type: ClusterIP
+  selector:
+    app: panda-notification-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 4003

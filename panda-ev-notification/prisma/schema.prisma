@@ -210,6 +210,98 @@ model StationDailyStat {
   @@schema("panda_ev_noti")
 }
 
+// ============================================================
+// SMS MODULE
+// ============================================================
+
+enum SmsNetworkType {
+  ONNET
+  OFFNET
+
+  @@schema("panda_ev_noti")
+}
+
+enum SmsStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+
+  @@schema("panda_ev_noti")
+}
+
+enum SmsType {
+  OTP
+  TEXT
+
+  @@schema("panda_ev_noti")
+}
+
+/// One record per SMS submitted to the LTC API
+model SmsLog {
+  id              String         @id @default(uuid()) @db.Uuid
+  transactionId   String         @unique @map("transaction_id") @db.VarChar(100)
+  /// Country dialing code, e.g. "856" for Laos
+  countryCode     String         @map("country_code") @db.VarChar(10)
+  /// Local number without country code, e.g. "2078559999"
+  mobileNumber    String         @map("mobile_number") @db.VarChar(20)
+  /// First 3 digits of mobileNumber — identifies the carrier, e.g. "207" = Beeline
+  operator        String         @db.VarChar(10)
+  /// Full number as sent to LTC API, e.g. "8562078559999"
+  fullPhoneNumber String         @map("full_phone_number") @db.VarChar(30)
+  header          String         @db.VarChar(50)
+  message         String         @db.Text
+  smsType         SmsType        @map("sms_type")
+  networkType     SmsNetworkType @map("network_type")
+  /// 200 LAK (onnet) or 300 LAK (offnet)
+  costLak         Int            @map("cost_lak")
+  smid            String?        @db.VarChar(100)
+  status          SmsStatus      @default(PENDING)
+  resultCode      String?        @map("result_code") @db.VarChar(20)
+  errorMessage    String?        @map("error_message") @db.Text
+  /// Originating service: 'mobile', 'csms', 'api'
+  sourceService   String         @map("source_service") @db.VarChar(50)
+  userId          String?        @map("user_id") @db.VarChar(150)
+  sessionId       String?        @map("session_id") @db.VarChar(150)
+  sentAt          DateTime       @default(now()) @map("sent_at") @db.Timestamptz(6)
+  deliveredAt     DateTime?      @map("delivered_at") @db.Timestamptz(6)
+
+  @@index([fullPhoneNumber, sentAt])
+  @@index([status, sentAt])
+  @@index([networkType, sentAt])
+  @@index([sourceService, sentAt])
+  @@index([userId])
+  @@map("sms_logs")
+  @@schema("panda_ev_noti")
+}
+
+/// Pre-aggregated SMS delivery stats per calendar day.
+/// Fields are auto-incremented via ON CONFLICT UPSERT on each SMS send — never recalculated.
+model SmsDailyStat {
+  id               String   @id @default(uuid()) @db.Uuid
+  date             DateTime @db.Date
+  onnetCount       Int      @default(0) @map("onnet_count")
+  onnetAmountLak   BigInt   @default(0) @map("onnet_amount_lak")
+  offnetCount      Int      @default(0) @map("offnet_count")
+  offnetAmountLak  BigInt   @default(0) @map("offnet_amount_lak")
+  totalCount       Int      @default(0) @map("total_count")
+  totalAmountLak   BigInt   @default(0) @map("total_amount_lak")
+  successCount     Int      @default(0) @map("success_count")
+  failCount        Int      @default(0) @map("fail_count")
+  otpCount         Int      @default(0) @map("otp_count")
+  textCount        Int      @default(0) @map("text_count")
+  uniqueRecipients Int      @default(0) @map("unique_recipients")
+
+  @@unique([date])
+  @@index([date(sort: Desc)])
+  @@map("sms_daily_stats")
+  @@schema("panda_ev_noti")
+}
+
+// ============================================================
+// NOTIFICATION DAILY STATS (existing)
+// ============================================================
+
 /// Pre-aggregated notification delivery metrics per type+channel per day
 model NotificationDailyStat {
   id              String              @id @default(uuid()) @db.Uuid

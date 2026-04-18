@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: panda-ev-ingress
-  namespace: panda-ev
+  namespace: panda-ev-prod
   annotations:
     kubernetes.io/ingress.class: "gce"
     # ໃຊ້ Static IP ທີ່ເຮົາຈອງໄວ້
