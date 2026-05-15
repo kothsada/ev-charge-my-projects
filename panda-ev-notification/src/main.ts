@@ -10,18 +10,26 @@ process.env.TZ = 'Asia/Vientiane';
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConsoleLogger, Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { RedisService } from './configs/redis/redis.service';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
+import { TimezoneInterceptor } from './common/interceptors/timezone.interceptor';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import { nowBangkokIso } from './common/helpers/date.helper';
+
+class VientianeLogger extends ConsoleLogger {
+  protected getTimestamp(): string {
+    return nowBangkokIso();
+  }
+}
 
 async function bootstrap() {
   const logger = new Logger('bootstrap');
   try {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule, { logger: new VientianeLogger() });
 
     app.useWebSocketAdapter(new IoAdapter(app));
     app.useGlobalPipes(
@@ -31,7 +39,7 @@ async function bootstrap() {
         transformOptions: { enableImplicitConversion: true },
       }),
     );
-    app.useGlobalInterceptors(new TimeoutInterceptor(), new ResponseInterceptor());
+    app.useGlobalInterceptors(new TimeoutInterceptor(), new TimezoneInterceptor(), new ResponseInterceptor());
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.setGlobalPrefix('api/notification', { exclude: ['/', 'health'] });
     app.enableCors({ origin: '*', methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS', credentials: true });

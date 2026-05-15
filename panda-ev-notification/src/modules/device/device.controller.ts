@@ -11,6 +11,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DeviceService } from './device.service';
 import { RegisterDeviceDto, UnregisterDeviceDto } from './dto/device.dto';
+import { t } from '../../common/i18n';
 
 /**
  * Internal device management API — not exposed through public ingress.
@@ -32,7 +33,7 @@ export class DeviceController {
       dto.platform,
       dto.appVersion,
     );
-    return { registered: true };
+    return { registered: true, message: t('device.registered') };
   }
 
   @Delete()
@@ -40,7 +41,7 @@ export class DeviceController {
   @ApiOperation({ summary: 'Deactivate an FCM token (logout)' })
   async unregister(@Body() dto: UnregisterDeviceDto) {
     await this.deviceService.unregisterToken(dto.fcmToken);
-    return { unregistered: true };
+    return { unregistered: true, message: t('device.unregistered') };
   }
 
   @Get(':userId')

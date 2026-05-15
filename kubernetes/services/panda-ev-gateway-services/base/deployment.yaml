@@ -36,6 +36,8 @@ spec:
                 name: panda-gateway-api-config
 
           env:
+            - name: TZ
+              value: Asia/Vientiane
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

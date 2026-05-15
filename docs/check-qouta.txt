@@ -1,0 +1,39 @@
+✦ I have investigated the "Can’t scale up due to exceeded quota" warning for your panda-ev-cluster.
+
+  Findings
+  The cluster is hitting the SSD_TOTAL_GB quota limit in the asia-southeast1 region.
+
+   * Quota Limit: 500 GB
+   * Current Usage: ~370 GB
+   * Breakdown:
+       * 3 GKE Nodes: 300 GB (100 GB boot disk per node)
+       * 2 Persistent Volumes: 70 GB (used by RabbitMQ)
+   * The Conflict: To scale up, the cluster needs to add at least one more node (+100 GB). Adding 2 or more nodes (which Autopilot often does to maintain a buffer) would push the total to 570 GB, exceeding your 500 GB
+     limit.
+
+  Recommended Action
+  You need to request a quota increase for SSD_TOTAL_GB in asia-southeast1. I recommend requesting at least 1,000 GB to ensure the cluster can scale comfortably.
+
+  I have saved a detailed step-by-step report with instructions on how to request the increase here:
+  docs/2026-05-10/investigation-quota-exceeded.md
+
+  Summary of Next Steps:
+   1. Go to GCP Console > IAM & Admin > Quotas.
+   2. Search for SSD_TOTAL_GB in asia-southeast1.
+   3. Click Edit Quotas and request an increase to 1,000 GB.
+   4. Once approved, GKE will automatically resume scaling.
+
+   1 # You can monitor the progress with this command:
+   2 kubectl get events --all-namespaces --sort-by='.lastTimestamp' | grep -i ScaleUp
+
+  GKE Quota Investigation Complete: Completed GKE quota investigation.
+
+╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ? Shell  Checking for pending pods and describing the first one to confirm why it's waiting (e.g., 'Insufficient cpu' or 'ScaleUpFailed').                                                                                  │
+│ ╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │
+│ │ kubectl get pods -A --field-selector=status.phase=Pending && \                                                                                                                                                          │ │
+│ │ kubectl describe pod -n $(kubectl get pods -A --field-selector=status.phase=Pending -o jsonpath='{.items[0].metadata.namespace}') $(kubectl get pods -A --field-selector=status.phase=Pending -o                        │ │
+│ │ jsonpath='{.items[0].metadata.name}') | tail -n 20                                                                                                                                                                      │ │
+│ ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│ Allow execution of [kubectl]?                                                                                                                                                                                               │
+│                                                                                                                                                                                                                             │

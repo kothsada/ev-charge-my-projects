@@ -1,0 +1,177 @@
+ ---
+  ສະຫຼຸບການວິເຄາະ — Flutter App + Backend + OCPP Data
+
+  ---
+  ດີໃຈ: Flutter App ໃຊ້ Field ທີ່ຖືກຕ້ອງ
+
+  // status_cubit.dart:335
+  _lastEnergyKwh = event.energyKwh;   // ✓ ໃຊ້ energyKwh
+
+  // status_cubit.dart:363  
+  final formattedEnergy = EnergyUtil.formatKwhPrecise(event.energyKwh); // ✓
+
+  // ล่ ago live endpoint ກໍ
+  EnergyUtil.formatKwhPrecise(live.energyKwh);  // ✓
+
+  Flutter ບໍ່ໄດ້ໃຊ້ meterWh ໃນການສະແດງ — ໃຊ້ energyKwh ຢ່າງຖືກຕ້ອງ.
+
+  ---
+  ຕົ້ນຕໍຂອງ Bug: meterStart ຈາກ StartTransaction
+  
+  energyKwh ທີ່ mobile ໄດ້ຮັບ ຖືກຄຳນວນໂດຍ backend:
+
+  // charging-session.service.ts:1414
+  const energyKwh = (meterWh - meterStart) / 1000;
+
+  ທຸກຢ່າງຖືກ/ຜິດ ຂຶ້ນກັບ meterStart ທີ່ charger ສົ່ງໃນ StartTransaction message.
+
+  ຈາກ log:
+  Energy.Active.Import.Register ທຳອິດ = 17,840 Wh  (odometer ຂອງ charger)
+
+  ສາກທີ 1 — Charger ສົ່ງ meterStart = 17,840 (ຖືກຕ້ອງ)
+
+  energyKwh = (17,840 - 17,840) / 1000 = 0 kWh   ← ຖືກ
+
+  ສາກທີ 2 — Charger ສົ່ງ meterStart = 0 (Bug ທີ່ Charger Firmware)
+
+  energyKwh = (17,840 - 0) / 1000 = 17.84 kWh   ← ຜິດ! ທັນທີທີ່ session ເລີ່ມ
+
+  ລູກຄ້າຈະເຫັນ 17.84 kWh ທັນທີທີ່ຊ໋ョ ットstart — ທຸກຄ່າ ຜິດໝົດ.
+
+  ສາກທີ 3 — Charger ສົ່ງ meterStart ໃນ kWh (17.84) ແຕ່ MeterValues ໃນ Wh
+
+  OCPP service ບໍ່ normalize meterStart (ກຳນົດໃຫ້ MeterValues ເທົ່ານັ້ນ):
+
+  // ocpp.service.ts:315 — ເກັບຄ່າ as-is ບໍ່ມີ unit conversion
+  meterStart: payload.meterStart,  // ⚠️  ຖ້າ charger ສົ່ງ 17.84 (kWh), ເກັບ 17.84
+
+  // ແຕ່ MeterValues normalize → meterWh = 17,840 Wh
+  energyKwh = (17,840 - 17.84) / 1000 = 17.822 kWh  // ← ຜິດ!
+
+  ---
+  ວິທີກວດສອບ: Query DB
+
+  -- ກວດ meterStart ທີ່ charger ສ່ົງໃນ StartTransaction
+  SELECT
+    ocpp_transaction_id,
+    meter_start,
+    started_at,
+    meter_stop,
+    (meter_stop - meter_start) / 1000.0 AS energy_kwh_calculated
+  FROM panda_ev_ocpp.transactions
+  WHERE ocpp_transaction_id = 109;
+
+  ┌────────────────┬─────────────────────────────────────────────────┬─────────────────────────┐
+  │ ຜົນ meter_start │                     ຄວາມໝາຍ                     │         Action          │
+  ├────────────────┼─────────────────────────────────────────────────┼─────────────────────────┤
+  │ 17840          │ ຖືກຕ້ອງ — bug ຢູ່ທີ່ອື່ນ                                │ ກວດ Redis session state │
+  ├────────────────┼─────────────────────────────────────────────────┼─────────────────────────┤
+  │ 0              │ Charger firmware bug — ສົ່ງ 0 ໃນ StartTransaction │ Fix ໃນ OCPP service     │
+  ├────────────────┼─────────────────────────────────────────────────┼─────────────────────────┤
+  │ 17.84          │ Unit mismatch — charger ສົ່ງ kWh ແທນ Wh           │ Fix normalization       │
+  └────────────────┴─────────────────────────────────────────────────┴─────────────────────────┘
+
+  ---
+  ຖ້າ meterStart = 0 — Fix ໃນ OCPP Service
+
+  ໃນ handleStartTransaction, ໃຫ້ fallback ໂດຍໃຊ້ຄ່າ Energy.Active.Import.Register ທຳອິດຈາກ MeterValues ແທນ:
+
+  // ocpp.service.ts — ໃນ handleStartTransaction
+  // ຖ້າ charger ສົ່ງ meterStart = 0 ໃຫ້ wait MeterValues ທຳອິດ ແລ້ວ update meterStart
+  const meterStart = payload.meterStart > 0
+    ? payload.meterStart
+    : null; // ຈະ update ໃນ handleMeterValues ທຳອິດ
+
+  ໃຫ້ query DB ກ່ອນ — ຜົນ meter_start ຈະບອກໄດ້ທັນທີວ່າ bug ຢູ່ໃສ.
+
+✻ Brewed for 3m 56s
+
+※ recap: Analyzing OCPP charging data to find why energy values shown to mobile users are incorrect. Next: run the SQL query 
+  against `panda_ev_ocpp.transactions` where `ocpp_transaction_id = 109` to check what `meter_start` value was stored. 
+  (disable recaps in /config)
+  
+❯ '/Users/tohatcode/Downloads/panda_ev_ocpp_transaction_query_meterStart.csv' here is result with query : SELECT             
+      ocpp_transaction_id,                                                                                                   
+      meter_start,                                                                                                           
+      meter_stop,                                                                                                            
+      (meter_stop - meter_start) / 1000.0 AS energy_kwh_calculated,                                                          
+      start_time,                                                                                                            
+      stop_time                                                                                                              
+    FROM panda_ev_ocpp.transactions                                                                                          
+    WHERE ocpp_transaction_id = 109;                                                                                         
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ ດຽວນີ້ຂ້ອຍເຫັນທຸກຢ່າງຊັດເຈນແລ້ວ.
+
+  ---
+  ຜົນການວິເຄາະສຸດທ້າຍ — Transaction 109
+  
+  ຂໍ້ມູນຈາກ DB
+
+  ┌───────────────────────┬────────────┐
+  │         Field         │     ຄ່າ     │
+  ├───────────────────────┼────────────┤
+  │ meter_start           │ 17,840 Wh  │
+  ├───────────────────────┼────────────┤
+  │ meter_stop            │ 30,899 Wh  │
+  ├───────────────────────┼────────────┤
+  │ energy_kwh_calculated │ 13.059 kWh │
+  ├───────────────────────┼────────────┤
+  │ start_time            │ 19:37:41   │
+  ├───────────────────────┼────────────┤
+  │ stop_time             │ 20:00:23   │
+  └───────────────────────┴────────────┘
+
+  ---
+  ດີໃຈ: meterStart ຖືກຕ້ອງ 100%
+
+  meterStart (DB) = 17,840 Wh
+  ຄ່າທຳອິດໃນ MeterValues log = 17,840 Wh
+  → ຕົງກັນ ✓
+
+  energyKwh ທຳອິດ = (17,840 - 17,840) / 1000 = 0 kWh ✓
+  energyKwh ສຸດທ້າຍ SSE = (30,326 - 17,840) / 1000 = 12.486 kWh ✓
+  energyKwh billing     = (30,899 - 17,840) / 1000 = 13.059 kWh ✓
+
+  ບໍ່ມີ bug ໃນການ calculation — backend ຖືກຕ້ອງ, Flutter app ຖືກຕ້ອງ.
+
+  ---
+  ສິ່ງທີ່ "ດູຜິດ" ແຕ່ ເປັນ behaviour ປົກກະຕິ
+  
+  ບັນຫາ 1: SoC ກະໂດດ 0% → 32% ທັນທີ
+
+  19:37:44  SoC=0%,  Current=0A   ← ລໍຄອຍ EV connect, sensor ບໍ່ active
+  19:37:54  SoC=0%,  Current=0A
+  19:38:04  SoC=0%,  Current=0A
+  19:38:14  SoC=32%, Current=18A  ← EV connected! Sensor ເລີ່ມ read ຈິງ
+
+  ລູກຄ້າເຫັນ gauge ກະໂດດ 0→32% ໃນ 10 ວິ — ນີ້ charger firmware behaviour, ບໍ່ใช่ bug.
+
+  ບັນຫາ 2: SSE ສະແດງ 12.486 kWh, ໃບບິນສະແດງ 13.059 kWh
+
+  ລ. SSE ທຳອິດ (19:59:34)  →  meterWh = 30,326  →  12.486 kWh
+  StopTransaction (20:00:23) →  meterStop = 30,899  →  13.059 kWh
+                                                ↑
+                            ຊ່ວງ 49 ວິ ທີ່ MeterValues ບໍ່ໄດ້ log ໄວ້
+                            (~39 kW × 49/3600 h ≈ 0.531 kWh — ສອດຄ່ອງ)
+
+  ລູກຄ້າເຫັນ 12.49 kWh ຂະນະ charge, ແລ້ວໃບບິນສະແດງ 13.06 kWh — ດູ "ຕ່າງ" ແຕ່ ຖືກຕ້ອງ.
+
+  ---
+  Timeline ຄົບ
+
+  19:37:41  StartTransaction  →  meterStart = 17,840 Wh
+  19:37:44  MeterValues#1     →  V=0,    I=0A,  SoC=0%,  Energy=17,840 (energyKwh=0)
+  19:38:14  MeterValues#8     →  V=130V, I=18A, SoC=32%, Energy=17,840 (energyKwh=0)
+  19:40:24  MeterValues#24    →  Power ຂຶ້ນ 6kW → 39kW (DC ramp-up ປົກກະຕິ)
+  19:59:34  MeterValues#132   →  Energy=30,326 Wh  (energyKwh=12.486)
+  20:00:23  StopTransaction   →  meterStop=30,899  → billing=13.059 kWh ✓
+
+  ---
+  ສະຫຼຸບ
+
+  ບໍ່ພົບ bug ໃດໆ. ການ calculate ທຸກໄລ່ຖືກຕ້ອງ. ສິ່ງທີ່ "ດູຜິດ" ແມ່ນ:
+
+  1. SoC 0→32% — charger ຮາຍງານ 0% ກ່ອນ EV ຕໍ່ → ພິຈາລະນາເພີ່ມ note ໃນ UI ວ່າ "ກຳລັງຕໍ່..."
+  2. 12.49 vs 13.06 kWh — SSE ສະແດງ live reading, ໃບບິນໃຊ້ final reading ຈາກ StopTransaction → ນີ້ຖືກ, ແຕ່ອາດ confuse ລູກຄ້າ

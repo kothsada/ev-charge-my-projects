@@ -4,6 +4,10 @@ import { NotificationProcessor, ProcessNotificationDto } from './notification.pr
 import { AggregationService } from '../aggregation/aggregation.service';
 import { AdminStatsGateway } from '../websocket/admin-stats.gateway';
 import { DeviceService } from '../device/device.service';
+import { FcmService } from '../fcm/fcm.service';
+import { PrismaService } from '../../configs/prisma/prisma.service';
+import { Prisma } from '../../../generated/prisma/client';
+import { nowBangkokIso } from '../../common/helpers/date.helper';
 
 @Injectable()
 export class NotificationRouter implements OnModuleInit {
@@ -15,6 +19,8 @@ export class NotificationRouter implements OnModuleInit {
     private readonly aggregation: AggregationService,
     private readonly statsGateway: AdminStatsGateway,
     private readonly deviceService: DeviceService,
+    private readonly fcm: FcmService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async onModuleInit() {
@@ -43,6 +49,8 @@ export class NotificationRouter implements OnModuleInit {
       // Standard targeted notification — msg may include fcmTokens[] (backwards-compat)
       // or omit them to let the processor resolve tokens from user_fcm_devices by userId
       await this.processor.process(msg as unknown as ProcessNotificationDto);
+    } else if (routingKey === 'notification.topic') {
+      await this.handleTopicNotification(msg);
     } else if (routingKey === 'notification.broadcast') {
       // Broadcast — skipDedup always true; fcmTokens provided by sender
       await this.processor.process({ ...(msg as unknown as ProcessNotificationDto), skipDedup: true });
@@ -62,6 +70,47 @@ export class NotificationRouter implements OnModuleInit {
     } else {
       this.logger.warn(`Unknown routingKey: ${routingKey}`);
     }
+  }
+
+  private async handleTopicNotification(msg: Record<string, unknown>) {
+    const topic = (msg.topic as string) || 'all_users';
+    const type = (msg.type as string) || 'admin_broadcast';
+
+    const result = await this.fcm.sendToTopic(topic, {
+      title: msg.title as string,
+      body: msg.body as string,
+      imageUrl: msg.imageUrl as string | undefined,
+      data: msg.data as Record<string, string> | undefined,
+      priority: (msg.priority as 'high' | 'normal') ?? 'high',
+    });
+
+    const status = result ? 'SENT' : 'FAILED';
+
+    await this.prisma.notificationLog
+      .create({
+        data: {
+          userId: `topic:${topic}`,
+          channel: 'FCM',
+          type,
+          title: msg.title as string,
+          body: msg.body as string,
+          payload: msg as unknown as Prisma.InputJsonValue,
+          status,
+          fcmMessageId: result?.messageId ?? null,
+        },
+      })
+      .catch((err: Error) =>
+        this.logger.error(`Failed to log topic notification: ${err.message}`),
+      );
+
+    await this.aggregation.onNotificationSent(type, 'FCM', status);
+
+    this.statsGateway.emitNotificationSent({
+      userId: `topic:${topic}`,
+      type,
+      status,
+      sentAt: nowBangkokIso(),
+    });
   }
 
   private async handleOcppEvent(msg: Record<string, unknown>) {

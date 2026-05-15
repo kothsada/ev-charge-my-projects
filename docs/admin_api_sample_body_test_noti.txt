@@ -1,0 +1,208 @@
+Test bodies for Swagger now : 
+Admin API:
+
+  // Broadcast to all users (FCM topic)
+  { "title": "ແຈ້ງການ", "body": "ການບຳລຸງຮັກສາ 02:00-04:00", "channel": "FCM_TOPIC", "topic": "all_users" }
+
+  // Target specific mobile user (recipientIds = mobile user UUID from panda_ev_core)
+  { "title": "ໂປຣໂມຊັ່ນ", "body": "ທ່ານມີລາງວັນລໍຖ້າຢູ່!", "channel": "FCM_SINGLE", "recipientIds": ["<mobile-user-uuid>"] }
+
+  For FCM_SINGLE/FCM_MULTICAST, recipientIds are now mobile user IDs from panda_ev_core.users (the same IDs stored in panda_ev_noti.user_fcm_devices.user_id).
+
+✻ Sautéed for 4m 15s
+
+※ recap: Implemented FCM dispatch for admin notifications — POST /notifications now publishes to PANDA_EV_NOTIFICATIONS queue via RabbitMQ, with topic broadcast and per-user targeted support. Next: run
+  the migration on the database to drop the FK constraint. (disable recaps in /config)
+
+❯ do you have another sample test Noti?                                                                                                                                                                   
+
+⏺ ນີ້ຄືຕົວຢ່າງທົດສອບທັງໝົດທີ່ສາມາດໃຊ້ກັບ Swagger:
+                 
+  ---
+  1. Broadcast ໄປທຸກຄົນ (FCM Topic)
+  {
+    "title": "System Maintenance Notice",
+    "body": "The system will be under maintenance from 2:00 AM to 4:00 AM.",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users"
+  }
+
+  ---
+  2. Broadcast ສະເພາະຜູ້ຊາຍ
+  {
+    "title": "ໂປຣໂມຊັ່ນສຳລັບທ່ານ",
+    "body": "ສາກໄຟຟຣີ 30 ນາທີ ທຸກວັນສຸກ!",
+    "channel": "FCM_TOPIC",
+    "topic": "men"
+  }
+
+  ---
+  3. Broadcast ສະເພາະຜູ້ຍິງ
+  {
+    "title": "ໂປຣໂມຊັ່ນສຳລັບທ່ານ",
+    "body": "ສ່ວນຫຼຸດ 20% ສຳລັບການສາກໄຟທຸກວັນເສົາ",
+    "channel": "FCM_TOPIC",
+    "topic": "women"
+  }
+
+  ---
+  4. ສົ່ງຫາ User ຄົນດຽວ (FCM Single)
+  {
+    "title": "ລາງວັນລໍຖ້າທ່ານຢູ່!",
+    "body": "ທ່ານໄດ້ຮັບ 100 ຄະແນນ. ກົດເພື່ອກວດສອບ.",
+    "channel": "FCM_SINGLE",
+    "recipientIds": ["<mobile-user-uuid>"],
+    "data": { "screen": "rewards", "action": "open" }
+  }
+
+  ---
+  5. ສົ່ງຫາຫຼາຍ User (FCM Multicast)
+  {
+    "title": "ແຈ້ງການສ່ວນຕົວ",
+    "body": "ມີ Station ໃໝ່ໃກ້ກັບທ່ານ!",
+    "channel": "FCM_MULTICAST",
+    "recipientIds": [
+      "<mobile-user-uuid-1>",
+      "<mobile-user-uuid-2>",
+      "<mobile-user-uuid-3>"
+    ],
+    "data": { "screen": "station", "stationId": "abc123" }
+  }
+
+  ---
+  6. ສົ່ງພ້ອມຮູບພາບ
+  {
+    "title": "Panda EV — ໂປຣໂມຊັ່ນໃໝ່",
+    "body": "ສາກໄຟຟຣີ 1 ຊົ່ວໂມງ ສຳລັບສະມາຊິກໃໝ່",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+    "imageUrl": "https://storage.googleapis.com/panda-ev-storage/notifications/banner.png"
+  } 
+  
+  ---
+  7. ນັດໝາຍ ກຳນົດເວລາ (Scheduled)
+  {
+    "title": "ລຶ້ງຄືນ — ລາຄາໄຟຖືກກວ່າ",
+    "body": "ສາກໄຟລະຫວ່າງ 23:00–05:00 ລາຄາຖືກກວ່າ 30%",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+
+  ---
+  6. ສົ່ງພ້ອມຮູບພາບ
+  {
+    "title": "Panda EV — ໂປຣໂມຊັ່ນໃໝ່",
+    "body": "ສາກໄຟຟຣີ 1 ຊົ່ວໂມງ ສຳລັບສະມາຊິກໃໝ່",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+    "imageUrl": "https://storage.googleapis.com/panda-ev-storage/notifications/banner.png"
+  }
+
+  ---
+  7. ນັດໝາຍ ກຳນົດເວລາ (Scheduled)
+  {
+    "title": "ລຶ້ງຄືນ — ລາຄາໄຟຖືກກວ່າ",
+    "body": "ສາກໄຟລະຫວ່າງ 23:00–05:00 ລາຄາຖືກກວ່າ 30%",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+    "scheduledAt": "2026-05-14T20:00:00+07:00"
+  }
+
+  {
+    "title": "Panda EV — ໂປຣໂມຊັ່ນໃໝ່",
+    "body": "ສາກໄຟຟຣີ 1 ຊົ່ວໂມງ ສຳລັບສະມາຊິກໃໝ່",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+    "imageUrl": "https://storage.googleapis.com/panda-ev-storage/notifications/banner.png"
+  }
+
+  ---
+  7. ນັດໝາຍ ກຳນົດເວລາ (Scheduled)
+  {
+    "title": "ລຶ້ງຄືນ — ລາຄາໄຟຖືກກວ່າ",
+    "body": "ສາກໄຟລະຫວ່າງ 23:00–05:00 ລາຄາຖືກກວ່າ 30%",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+    "scheduledAt": "2026-05-14T20:00:00+07:00"
+  }
+
+    "topic": "all_users",
+    "imageUrl": "https://storage.googleapis.com/panda-ev-storage/notifications/banner.png"
+  }
+
+  ---
+  7. ນັດໝາຍ ກຳນົດເວລາ (Scheduled)
+  {
+    "title": "ລຶ້ງຄືນ — ລາຄາໄຟຖືກກວ່າ",
+    "body": "ສາກໄຟລະຫວ່າງ 23:00–05:00 ລາຄາຖືກກວ່າ 30%",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+    "scheduledAt": "2026-05-14T20:00:00+07:00"
+  }
+
+  ---
+  7. ນັດໝາຍ ກຳນົດເວລາ (Scheduled)
+  {
+    "title": "ລຶ້ງຄືນ — ລາຄາໄຟຖືກກວ່າ",
+    "body": "ສາກໄຟລະຫວ່າງ 23:00–05:00 ລາຄາຖືກກວ່າ 30%",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+    "scheduledAt": "2026-05-14T20:00:00+07:00"
+  }
+
+    "topic": "all_users",
+    "scheduledAt": "2026-05-14T20:00:00+07:00"
+  }
+
+  }
+
+
+  8. Deep-link ໄປໜ້າ Charging Session
+  {
+    "title": "ການສາກໄຟສຳເລັດ",
+    "channel": "FCM_SINGLE",
+    "recipientIds": ["<mobile-user-uuid>"],
+    "recipientIds": ["<mobile-user-uuid>"],
+      "<mobile-user-uuid-2>",
+      "<mobile-user-uuid-3>"
+    ],
+    "data": { "screen": "station", "stationId": "abc123" }
+  }
+
+  ---
+  6. ສົ່ງພ້ອມຮູບພາບ
+  {
+    "title": "Panda EV — ໂປຣໂມຊັ່ນໃໝ່",
+    "body": "ສາກໄຟຟຣີ 1 ຊົ່ວໂມງ ສຳລັບສະມາຊິກໃໝ່",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+    "imageUrl": "https://storage.googleapis.com/panda-ev-storage/notifications/banner.png"
+  }
+
+  ---
+  7. ນັດໝາຍ ກຳນົດເວລາ (Scheduled)
+  {
+    "title": "ລຶ້ງຄືນ — ລາຄາໄຟຖືກກວ່າ",
+    "body": "ສາກໄຟລະຫວ່າງ 23:00–05:00 ລາຄາຖືກກວ່າ 30%",
+    "channel": "FCM_TOPIC",
+    "topic": "all_users",
+    "scheduledAt": "2026-05-14T20:00:00+07:00"
+  }
+
+  ---
+  8. Deep-link ໄປໜ້າ Charging Session
+  {
+    "title": "ການສາກໄຟສຳເລັດ",
+    "body": "ທ່ານໄດ້ສາກໄຟ 25.4 kWh ລາຄາ 50,800 ກີບ",
+    "channel": "FCM_SINGLE",
+    "recipientIds": ["<mobile-user-uuid>"],
+    "data": {
+      "screen": "charging",
+      "sessionId": "sess-001",
+      "action": "view_summary"
+    }
+  }
+
+  ---
+
+  ▎ ໝາຍເຫດ: recipientIds ຄື mobile user UUID ຈາກ panda_ev_core.users
+  ▎ ຫາໄດ້ຈາກ: GET /api/admin/v1/mobile-users → ເອົາ mobileUserId field

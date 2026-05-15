@@ -1,0 +1,32 @@
+{
+  "common": {
+    "success": "Success",
+    "internal_error": "Internal server error"
+  },
+  "error": {
+    "validation_failed": "Validation failed",
+    "resource_not_found": "The requested resource was not found",
+    "rate_limit_exceeded": "Too many requests, please try again later",
+    "internal": "Internal server error",
+    "token_expired": "Your session has expired, please login again",
+    "token_invalid": "Invalid authentication token"
+  },
+  "notification": {
+    "history_retrieved": "Notification history retrieved",
+    "not_found": "Notification not found"
+  },
+  "device": {
+    "registered": "Device registered successfully",
+    "unregistered": "Device unregistered successfully"
+  },
+  "sms": {
+    "sent": "SMS sent successfully",
+    "send_failed": "SMS send failed",
+    "ltc_api_failure": "LTC API returned failure"
+  },
+  "websocket": {
+    "auth_missing_token": "Missing authentication token",
+    "auth_server_error": "Server misconfiguration",
+    "auth_invalid_token": "Invalid or expired token"
+  }
+}

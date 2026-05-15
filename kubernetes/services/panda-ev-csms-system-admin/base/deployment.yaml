@@ -24,7 +24,7 @@ spec:
       containers:
         - name: panda-system-api
           image: asia-southeast1-docker.pkg.dev/pandaev/panda-ev-repo/panda-system-api:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 4000
@@ -32,6 +32,8 @@ spec:
             - configMapRef:
                 name: panda-system-api-config
           env:
+            - name: TZ
+              value: Asia/Vientiane
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -50,7 +52,7 @@ spec:
             - name: RABBITMQ_URL
               valueFrom:
                 secretKeyRef:
-                  name: panda-system-api-secrets
+                  name: panda-rabbitmq-prod-secrets
                   key: RABBITMQ_URL
             - name: JWT_PRIVATE_KEY
               valueFrom:
@@ -77,6 +79,16 @@ spec:
                 secretKeyRef:
                   name: panda-system-api-secrets
                   key: QR_SIGNING_SECRET
+            - name: MOBILE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-system-api-secrets
+                  key: MOBILE_DATABASE_URL
+            - name: MOBILE_DATABASE_WRITE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-system-api-secrets
+                  key: MOBILE_DATABASE_WRITE_URL
           readinessProbe:
             httpGet:
               path: /health

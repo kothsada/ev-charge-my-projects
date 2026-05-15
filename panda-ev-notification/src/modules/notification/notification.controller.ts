@@ -8,12 +8,14 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { IsEnum, IsISO8601, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { NotificationProcessor } from './notification.processor';
 import { PrismaService } from '../../configs/prisma/prisma.service';
 import { SendNotificationDto } from './dto/send-notification.dto';
+import { nowBangkokIso, parseVientianeDate } from '../../common/helpers/date.helper';
+import { t } from '../../common/i18n';
 
 class NotificationHistoryQuery {
   @ApiPropertyOptional({ description: 'Filter by user ID' })
@@ -41,14 +43,14 @@ class NotificationHistoryQuery {
   @IsString()
   type?: string;
 
-  @ApiPropertyOptional({ description: 'From date (ISO8601)' })
+  @ApiPropertyOptional({ description: 'Filter from this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-01-01' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   from?: string;
 
-  @ApiPropertyOptional({ description: 'To date (ISO8601)' })
+  @ApiPropertyOptional({ description: 'Filter until this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-12-31' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   to?: string;
 }
 
@@ -56,22 +58,17 @@ class UpdateStatusDto {
   @ApiProperty({ enum: ['DELIVERED', 'READ', 'CLICKED'] })
   @IsEnum(['DELIVERED', 'READ', 'CLICKED'])
   status: 'DELIVERED' | 'READ' | 'CLICKED';
-
-  @ApiPropertyOptional({ description: 'Timestamp of the status event' })
-  @IsOptional()
-  @IsISO8601()
-  timestamp?: string;
 }
 
 class DailyStatsQuery {
-  @ApiPropertyOptional({ description: 'From date (ISO8601)' })
+  @ApiPropertyOptional({ description: 'Filter from this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-01-01' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   from?: string;
 
-  @ApiPropertyOptional({ description: 'To date (ISO8601)' })
+  @ApiPropertyOptional({ description: 'Filter until this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-12-31' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   to?: string;
 
   @ApiPropertyOptional({ description: 'Filter by notification type' })
@@ -86,14 +83,14 @@ class StationStatsQuery {
   @IsUUID()
   stationId?: string;
 
-  @ApiPropertyOptional({ description: 'From date (ISO8601)' })
+  @ApiPropertyOptional({ description: 'Filter from this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-01-01' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   from?: string;
 
-  @ApiPropertyOptional({ description: 'To date (ISO8601)' })
+  @ApiPropertyOptional({ description: 'Filter until this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-12-31' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   to?: string;
 }
 
@@ -126,8 +123,8 @@ export class NotificationController {
     if (query.type) where.type = query.type;
     if (query.from || query.to) {
       where.sentAt = {};
-      if (query.from) (where.sentAt as Record<string, Date>).gte = new Date(query.from);
-      if (query.to) (where.sentAt as Record<string, Date>).lte = new Date(query.to);
+      if (query.from) (where.sentAt as Record<string, Date>).gte = parseVientianeDate(query.from);
+      if (query.to) (where.sentAt as Record<string, Date>).lte = parseVientianeDate(query.to, true);
     }
 
     const [data, total] = await Promise.all([
@@ -144,14 +141,14 @@ export class NotificationController {
       success: true,
       statusCode: 200,
       data,
-      message: 'Notification history retrieved',
+      message: t('notification.history_retrieved'),
       meta: {
         total,
         page,
         limit,
         totalPages: Math.ceil(total / limit),
       },
-      timestamp: new Date().toISOString(),
+      timestamp: nowBangkokIso(),
     };
   }
 
@@ -159,7 +156,7 @@ export class NotificationController {
   @ApiOperation({ summary: 'Update notification delivery status' })
   async updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
     const updateData: Record<string, unknown> = { status: dto.status };
-    const ts = dto.timestamp ? new Date(dto.timestamp) : new Date();
+    const ts = new Date();
 
     if (dto.status === 'DELIVERED') updateData.deliveredAt = ts;
     if (dto.status === 'READ') updateData.readAt = ts;
@@ -180,8 +177,8 @@ export class NotificationController {
     if (query.type) where.type = query.type;
     if (query.from || query.to) {
       where.date = {};
-      if (query.from) (where.date as Record<string, Date>).gte = new Date(query.from);
-      if (query.to) (where.date as Record<string, Date>).lte = new Date(query.to);
+      if (query.from) (where.date as Record<string, Date>).gte = parseVientianeDate(query.from);
+      if (query.to) (where.date as Record<string, Date>).lte = parseVientianeDate(query.to, true);
     }
 
     const stats = await this.prisma.notificationDailyStat.findMany({
@@ -199,8 +196,8 @@ export class NotificationController {
     if (query.stationId) where.stationId = query.stationId;
     if (query.from || query.to) {
       where.date = {};
-      if (query.from) (where.date as Record<string, Date>).gte = new Date(query.from);
-      if (query.to) (where.date as Record<string, Date>).lte = new Date(query.to);
+      if (query.from) (where.date as Record<string, Date>).gte = parseVientianeDate(query.from);
+      if (query.to) (where.date as Record<string, Date>).lte = parseVientianeDate(query.to, true);
     }
 
     const stats = await this.prisma.stationDailyStat.findMany({

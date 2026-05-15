@@ -108,11 +108,14 @@ export class FcmService implements OnModuleInit {
           android: {
             priority: notification.priority === 'high' ? 'high' : 'normal',
             notification: {
-              channelId: notification.channelId ?? 'default',
+              channelId: notification.channelId ?? 'panda_ev_high_importance',
               imageUrl: notification.imageUrl,
             },
           },
           apns: {
+            headers: {
+              'apns-priority': '10',
+            },
             payload: {
               aps: {
                 contentAvailable: true,

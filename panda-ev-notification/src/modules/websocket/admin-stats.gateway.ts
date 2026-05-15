@@ -8,6 +8,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
+import { t } from '../../common/i18n';
 
 @WebSocketGateway({ namespace: '/admin-stats', cors: { origin: process.env.ALLOWED_ORIGINS?.split(',') ?? '*' } })
 export class AdminStatsGateway
@@ -27,7 +28,7 @@ export class AdminStatsGateway
 
     if (!token) {
       this.logger.warn(`WS /admin-stats: connection rejected — no token (id=${client.id})`);
-      client.emit('auth_error', 'Missing authentication token');
+      client.emit('auth_error', t('websocket.auth_missing_token'));
       client.disconnect(true);
       return;
     }
@@ -35,7 +36,7 @@ export class AdminStatsGateway
     const secret = process.env.JWT_SECRET ?? process.env.ADMIN_STATS_WS_SECRET;
     if (!secret) {
       this.logger.error('JWT_SECRET not configured — rejecting all WebSocket connections');
-      client.emit('auth_error', 'Server misconfiguration');
+      client.emit('auth_error', t('websocket.auth_server_error'));
       client.disconnect(true);
       return;
     }
@@ -47,7 +48,7 @@ export class AdminStatsGateway
       this.logger.warn(
         `WS /admin-stats: connection rejected — invalid token (id=${client.id}): ${(err as Error).message}`,
       );
-      client.emit('auth_error', 'Invalid or expired token');
+      client.emit('auth_error', t('websocket.auth_invalid_token'));
       client.disconnect(true);
     }
   }

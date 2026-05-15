@@ -1,0 +1,139 @@
+Postman Sample Bodies
+  
+  Endpoint: POST http://localhost:5001/api/notification/v1/notifications/send
+  Content-Type: application/json
+
+  ---
+  1. Session Started
+
+  {
+    "userId": "0299f7d6-e972-4539-881f-42deb685ffa4",
+    "type": "session_started",
+    "fcmTokens": ["your_fcm_token_here"],
+    "title": "Charging Started",
+    "body": "Your charging session has started. We'll notify you when complete.",
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "stationId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "chargerIdentity": "PANDA-STATION-01",
+    "data": { "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+    "priority": "normal",
+    "skipDedup": false
+  }
+
+  ---
+  2. Charging Complete
+
+  {
+    "userId": "0299f7d6-e972-4539-881f-42deb685ffa4",
+    "type": "charging_complete",
+    "fcmTokens": ["your_fcm_token_here"],
+    "title": "Charging Complete",
+    "body": "Your vehicle has been fully charged. Please unplug to avoid parking fees.",
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "priority": "normal",
+    "skipDedup": false
+  }
+
+  ---
+  3. Battery 80% (SOC 80) — rate-limited: 1/day
+
+  {
+    "userId": "0299f7d6-e972-4539-881f-42deb685ffa4",
+    "type": "soc_80",
+    "fcmTokens": ["your_fcm_token_here"],
+    "title": "Battery 80% Charged",
+    "body": "Your battery is at 80%. Charging will slow down soon.",
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "priority": "normal",
+    "skipDedup": false
+  }
+
+  ---
+  4. Battery 100% (SOC 100)
+
+  {
+    "userId": "0299f7d6-e972-4539-881f-42deb685ffa4",
+    "type": "soc_100",
+    "fcmTokens": ["your_fcm_token_here"],
+    "title": "Battery Fully Charged",
+    "body": "Your battery is at 100%. Please unplug to free up the charger.",
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "priority": "normal",
+    "skipDedup": true
+  }
+
+  ---
+  5. Overstay Warning — rate-limited: 4/day
+
+  {
+    "userId": "0299f7d6-e972-4539-881f-42deb685ffa4",
+    "type": "overstay_warning_1",
+    "fcmTokens": ["your_fcm_token_here"],
+    "title": "Parking Fee Warning",
+    "body": "Your vehicle is still connected after charging. Parking fees will begin in 15 minutes.",
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "priority": "high",
+    "skipDedup": false
+  }
+
+  ---
+  6. Charger Fault
+
+  {
+    "userId": "0299f7d6-e972-4539-881f-42deb685ffa4",
+    "type": "charger_fault",
+    "fcmTokens": ["your_fcm_token_here"],
+    "title": "Charger Fault Detected",
+    "body": "Charger PANDA-STATION-01 has reported a fault: GroundFailure. An engineer has been notified.",
+    "sessionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "chargerIdentity": "PANDA-STATION-01",
+    "data": { "errorCode": "GroundFailure", "identity": "PANDA-STATION-01" },
+    "priority": "high",
+    "skipDedup": true
+  }
+
+  ---
+  7. Low Balance Warning
+
+  {
+    "userId": "0299f7d6-e972-4539-881f-42deb685ffa4",
+    "type": "low_balance_warning",
+    "fcmTokens": ["your_fcm_token_here"],
+    "title": "Low Wallet Balance",
+    "body": "Your wallet balance is 5,000 LAK. Top up to continue charging.",
+    "priority": "high",
+    "skipDedup": true
+  }
+
+  ---
+  8. Promo / Broadcast — rate-limited: 2/day
+
+  {
+    "userId": "0299f7d6-e972-4539-881f-42deb685ffa4",
+    "type": "promo",
+    "fcmTokens": ["your_fcm_token_here"],
+    "title": "Special Offer This Weekend!",
+    "body": "Charge for free between 10PM-6AM at all Panda EV stations this weekend.",
+    "priority": "normal",
+    "skipDedup": true
+  }
+
+  ---
+  9. Welcome (new user)
+
+  {
+    "userId": "0299f7d6-e972-4539-881f-42deb685ffa4",
+    "type": "welcome",
+    "fcmTokens": ["your_fcm_token_here"],
+    "title": "Welcome to Panda EV",
+    "body": "Your account is ready. Start charging smarter with Panda EV.",
+    "priority": "normal",
+    "skipDedup": true
+  }
+
+  ---
+  Notes:
+  - Replace "your_fcm_token_here" with a real FCM registration token from the mobile device
+  - sessionId must be a valid UUID — omit it if not tied to a session (e.g. welcome, promo)
+  - skipDedup: true disables the 24h Redis dedup check — useful for testing the same notification repeatedly
+  - Rate limits per user: soc_80 → 1/day, overstay_warning → 4/day, promo → 2/day, all types → 20/hour 

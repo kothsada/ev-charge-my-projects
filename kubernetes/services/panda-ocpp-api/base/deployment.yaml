@@ -35,6 +35,8 @@ spec:
             - configMapRef:
                 name: panda-ocpp-api-config
           env:
+            - name: TZ
+              value: Asia/Vientiane
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

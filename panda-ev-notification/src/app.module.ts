@@ -8,6 +8,7 @@ import { PrismaModule } from './configs/prisma/prisma.module';
 import { RedisModule } from './configs/redis/redis.module';
 import { ServiceAuthModule } from './common/service-auth/service-auth.module';
 import { RabbitMQModule } from './configs/rabbitmq/rabbitmq.module';
+import { I18nModule } from './common/i18n';
 
 // Features
 import { HealthModule } from './modules/health/health.module';
@@ -26,6 +27,7 @@ import { SmsModule } from './modules/sms/sms.module';
     // Infrastructure (Global — order matters: ServiceAuthModule before RabbitMQModule)
     PrismaModule,
     RedisModule,
+    I18nModule,
     ServiceAuthModule,
     RabbitMQModule,
     ScheduleModule.forRoot(),

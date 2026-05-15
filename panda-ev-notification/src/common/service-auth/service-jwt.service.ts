@@ -287,7 +287,7 @@ export class ServiceJwtService {
 
     // Anti-replay: reject if jti was already seen
     if (payload.jti) {
-      const jtiKey = `svc:jti:${payload.jti}`;
+      const jtiKey = `svc:jti:${this.serviceName}:${payload.jti}`;
       const alreadySeen = await this.redis.get(jtiKey);
       if (alreadySeen) {
         this.logger.warn(

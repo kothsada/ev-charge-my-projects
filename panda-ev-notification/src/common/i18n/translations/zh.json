@@ -1,0 +1,32 @@
+{
+  "common": {
+    "success": "成功",
+    "internal_error": "服务器内部错误"
+  },
+  "error": {
+    "validation_failed": "验证失败",
+    "resource_not_found": "未找到请求的资源",
+    "rate_limit_exceeded": "请求过于频繁，请稍后再试",
+    "internal": "服务器内部错误",
+    "token_expired": "您的会话已过期，请重新登录",
+    "token_invalid": "无效的身份验证令牌"
+  },
+  "notification": {
+    "history_retrieved": "通知历史记录获取成功",
+    "not_found": "未找到通知"
+  },
+  "device": {
+    "registered": "设备注册成功",
+    "unregistered": "设备注销成功"
+  },
+  "sms": {
+    "sent": "短信发送成功",
+    "send_failed": "短信发送失败",
+    "ltc_api_failure": "LTC API 返回失败"
+  },
+  "websocket": {
+    "auth_missing_token": "缺少身份验证令牌",
+    "auth_server_error": "服务器配置错误",
+    "auth_invalid_token": "令牌无效或已过期"
+  }
+}

@@ -102,7 +102,9 @@ All RabbitMQ messages are signed with RS256 `x-service-token` headers. Consumers
 | Queue | Direction | Payload |
 |---|---|---|
 | `PANDA_EV_CSMS_COMMANDS` | Mobile → OCPP | `{ routingKey: 'session.start'\|'session.stop', sessionId, identity, connectorId, mobileUserId }` |
-| `PANDA_EV_QUEUE` | OCPP → Mobile + Notification | `transaction.started`, `transaction.stopped`, `charger.booted`, `connector.status_changed` |
+| `PANDA_EV_OCPP_EVENTS_FX` | OCPP fanout exchange | Delivers a full copy to both `PANDA_EV_QUEUE` and `PANDA_EV_QUEUE_NOTI` — eliminates competing-consumer race; env: `RABBITMQ_OCPP_EVENTS_FX` |
+| `PANDA_EV_QUEUE` | OCPP → Mobile (via fanout) | `transaction.started`, `transaction.stopped`, `charger.booted`, `connector.status_changed` |
+| `PANDA_EV_QUEUE_NOTI` | OCPP → Notification (via fanout) | Same events as `PANDA_EV_QUEUE`; consumed for aggregation + WebSocket dashboard; env: `RABBITMQ_OCPP_EVENTS_NOTI_QUEUE` |
 | `PANDA_EV_NOTIFICATIONS` | Mobile/Admin → Notification | `{ routingKey: 'notification.targeted'\|'notification.session'\|'notification.broadcast'\|'notification.overstay_reminder', fcmTokens[], userId, type, title, body, … }` |
 | `PANDA_EV_QUEUE_DLQ` | Mobile (dead-letter for PANDA_EV_QUEUE) | Failed OCPP events after 3 retries (5s/30s/120s backoff); use `rabbitMQ.consumeWithDlq()` |
 | `PANDA_EV_QUEUE_DLX` | Mobile (dead-letter exchange) | Fanout exchange — DLQ is bound to this; set in `RABBITMQ_OCPP_EVENTS_DLX` env |
@@ -118,10 +120,10 @@ All RabbitMQ messages are signed with RS256 `x-service-token` headers. Consumers
 
 ### Service-to-Service Security (RS256 JWT)
 
-All three NestJS services implement `ServiceAuthModule` (`src/common/service-auth/`) which provides `ServiceJwtService`:
+All NestJS services implement `ServiceAuthModule` (`src/common/service-auth/`) which provides `ServiceJwtService`:
 
 - **Signing** (`RabbitMQService.publish`): attaches a 30-second RS256 JWT as `x-service-token` AMQP header. Token payload: `{ iss, aud, iat, exp, jti }`.
-- **Verification** (`RabbitMQService` consumer): validates `x-service-token` signature against the issuer's trusted public key, then checks Redis jti blacklist (60 s TTL) to prevent replay. Messages that fail verification are nacked and discarded.
+- **Verification** (`RabbitMQService` consumer): validates `x-service-token` signature against the issuer's trusted public key, then checks Redis jti blacklist (60 s TTL) to prevent replay. Messages that fail verification are nacked and discarded. **Redis key format**: `svc:jti:{serviceName}:{jti}` — namespaced per-consumer so fanout deliveries of the same token to multiple services don't false-positive as replays.
 - **WebSocket gateways** (Admin `NotificationGateway`, `PricingGateway`): verify the user Bearer JWT on `handleConnection`, disconnect with `auth_error` if invalid.
 - **User JWT (RS256)**: Admin and Mobile sign access tokens with `JWT_PRIVATE_KEY` (RS256). The `JwtStrategy` resolves verification key via: `JWT_PUBLIC_KEY_PATH` → `JWT_PUBLIC_KEY` (base64) → `JWT_SECRET` (HS256 fallback).
 
@@ -140,12 +142,15 @@ All three NestJS services implement `ServiceAuthModule` (`src/common/service-aut
 | Admin | `mobile-api`, `ocpp-csms` |
 | Mobile | `admin-api`, `ocpp-csms` |
 | OCPP | `mobile-api`, `admin-api` |
+| Notification | `mobile-api`, `admin-api`, `ocpp-csms` |
 
 `generate-service-keys-local.sh` cross-copies peer public keys automatically, so `TRUSTED_SERVICE_PUBLIC_KEYS_DIR` works without manual steps.
 
 **Module load order**: `ServiceAuthModule` must be imported before `RabbitMQModule` in each service's `app.module.ts` because `RabbitMQService` injects `ServiceJwtService`.
 
 **OCPP does not issue user JWTs** — it only needs `SERVICE_JWT_PRIVATE_KEY` and `TRUSTED_SERVICE_PUBLIC_KEYS`.
+
+**Notification WebSocket** (`/admin-stats` namespace): verifies user Bearer JWT on `handleConnection`, disconnects unauthenticated clients — despite having open CORS. Auth token passed via `socket.handshake.auth.token` or `Authorization: Bearer` header.
 
 ### Database Isolation
 
@@ -195,16 +200,16 @@ Translation files: `src/common/i18n/translations/{en,lo,zh}.json`. Add new keys 
 ### Module Inventory
 
 **Admin** (`panda-ev-csms-system-admin/src/modules/`):
-`auth`, `iam` (users/roles/groups/permissions), `cms`, `news`, `notification`, `audit-log`, `system-settings`, `station`, `location`, `pricing`, `mobile-user`, `legal-content`, `enums`, `health`, `cache`, `upload`
+`auth`, `iam` (users/roles/groups/permissions), `cms`, `news`, `notification`, `noti-management` (send/broadcast via notification service REST), `audit-log`, `system-settings`, `station`, `location`, `pricing`, `mobile-user`, `legal-content`, `gateway-payments` (admin view of payment records from Gateway), `enums`, `health`, `cache`, `upload`
 
 **Mobile** (`panda-ev-client-mobile/src/modules/`):
-`auth`, `profile`, `vehicle`, `wallet`, `charging-session`, `station`, `payment`, `invoice`, `financial`, `content`, `favorite`, `fcm`, `notification`, `app-config`, `enums`, `health`, `cache`, `audit-log`
+`auth`, `profile`, `vehicle`, `wallet`, `charging-session`, `station`, `payment`, `invoice`, `financial`, `content`, `banner`, `news`, `favorite`, `fcm`, `notification`, `app-config`, `enums`, `health`, `cache`, `audit-log`
 
 **OCPP** (`panda-ev-ocpp/src/modules/`):
 `ocpp` (single module — handles all charger WebSocket protocol, auth, and message routing)
 
 **Notification** (`panda-ev-notification/src/modules/`):
-`notification` (processor, router), `fcm` (delivery), `dedup`, `rate-limit`, `device` (FCM token registry), `aggregation` (stats), `template`, `websocket` (admin dashboard), `health`
+`notification` (processor, router), `fcm` (delivery), `dedup`, `rate-limit`, `device` (FCM token registry), `aggregation` (stats), `template`, `websocket` (admin dashboard), `sms` (LTC SMS delivery + aggregation), `health`
 
 **Gateway** (`panda-ev-gateway-services/src/modules/`):
 `payment` (only module — BCEL QR initiation, PubNub callback, void, refund, mode switch, reconciliation)
@@ -248,6 +253,16 @@ QR codes are generated per-connector by Admin and scanned by the Mobile App to s
 - `POST /api/mobile/v1/charging-sessions/qr-start` — full start: verify → decode → resolve Admin DB → per-user lock (30s) → per-charger lock (8h) → wallet check → create session → publish RabbitMQ
 
 **`pricePerKwh` and `stationName` are never accepted from the client** in `qr-start` — always resolved from the Admin DB LATERAL JOIN query.
+
+### SMS — Notification Service Routes via LTC API
+
+Mobile and Admin publish to `PANDA_EV_SMS`; Notification's `SmsRouter` consumes and calls LTC's REST API:
+
+- **Submit**: `POST {LTC_SMS_BASE_URL}/submit_sms` — success = `resultCode === "20000"` + `SMID`
+- **Phone parsing**: `"8562078559999"` → `countryCode=856`, operator prefix determines onnet (LTC, 200 LAK) vs offnet (300 LAK). Configure via `LTC_ONNET_OPERATOR_PREFIXES` (comma-separated 3-digit codes; default `205`).
+- **Dry-run**: when `LTC_SMS_API_KEY` is unset, calls are skipped and a fake SMID is returned — safe for dev.
+- **Stats**: auto-increment `SmsDailyStat` on every send (`ON CONFLICT DO UPDATE`); tracks onnet/offnet counts, amounts, OTP/text breakdown, success/fail.
+- **DLQ**: `PANDA_EV_SMS` → DLX `PANDA_EV_SMS_DLX` → DLQ `PANDA_EV_SMS_DLQ`; 3 retries at 5s/30s/120s.
 
 ### FCM Push — Notification Service is the Canonical Sender
 

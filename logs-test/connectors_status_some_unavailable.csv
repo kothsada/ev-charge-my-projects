@@ -1,0 +1,3 @@
+id,charger_id,connector_id,plug_type,connector_type,power_output_kw,status,last_meter_value,current_transaction_id,is_active,sort_order,created_at,updated_at,deleted_at,created_by_id,updated_by_id
+3df1ba18-0048-41af-950c-bce5f761d8d7,661369a8-674f-411e-8989-60ae69ff730c,2,GBT,DC_FAST,120,UNAVAILABLE,,,true,2,2026-05-09 13:25:52.848+07,2026-05-13 16:14:06.722+07,,,
+3c2d1e61-18ce-4786-a1ea-daae6147021f,661369a8-674f-411e-8989-60ae69ff730c,1,GBT,DC_FAST,120,UNAVAILABLE,,,true,1,2026-05-09 13:25:52.805+07,2026-05-13 16:14:06.722+07,,,

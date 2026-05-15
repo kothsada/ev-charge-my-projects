@@ -8,6 +8,7 @@ import { AggregationService } from '../aggregation/aggregation.service';
 import { AdminStatsGateway } from '../websocket/admin-stats.gateway';
 import { DeviceService } from '../device/device.service';
 import { Prisma } from '../../../generated/prisma/client';
+import { nowBangkokIso } from '../../common/helpers/date.helper';
 
 // Mobile API consumes this queue to clean up its own user_devices table
 const FCM_CLEANUP_QUEUE =
@@ -161,7 +162,7 @@ export class NotificationProcessor {
       stationId: msg.stationId,
       chargerIdentity: msg.chargerIdentity,
       status,
-      sentAt: new Date().toISOString(),
+      sentAt: nowBangkokIso(),
     });
 
     return { status, notificationId: log?.id };

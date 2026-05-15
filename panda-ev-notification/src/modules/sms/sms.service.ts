@@ -6,6 +6,8 @@ import { parsePhoneNumber, generateTransactionId } from './sms.helper';
 import { SendSmsDto, SmsTypeInput } from './dto/send-sms.dto';
 import { SmsHistoryQueryDto, SmsStatsQueryDto } from './dto/sms-query.dto';
 import { SmsStatus, SmsType } from '../../../generated/prisma/client';
+import { parseVientianeDate, toBangkokIso, toVientianeDateStr } from '../../common/helpers/date.helper';
+import { t } from '../../common/i18n';
 
 // Cache TTLs (seconds)
 const CACHE_TTL_STATS = 3 * 60;    // 3 min — daily stats refresh quickly on each send
@@ -75,7 +77,7 @@ export class SmsService {
 
   /** Invalidate all sms:stats:* keys for today so the next request sees fresh data. */
   private invalidateStatsCache(): void {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toVientianeDateStr(new Date());
     this.redis
       .getClient()
       .keys(`sms:stats:*${today}*`)
@@ -121,7 +123,7 @@ export class SmsService {
 
     let smid: string | null = null;
     let finalStatus: SmsStatus = SmsStatus.FAILED;
-    let resultMessage = 'SMS send failed';
+    let resultMessage = t('sms.send_failed');
     let errorMessage: string | null = null;
     let resultCode: string | null = null;
 
@@ -140,8 +142,8 @@ export class SmsService {
       resultCode = resp.resultCode ?? resp.ResultCode ?? null;
       finalStatus = isSuccess ? SmsStatus.SENT : SmsStatus.FAILED;
       resultMessage = isSuccess
-        ? 'SMS sent successfully'
-        : (resp.ResultDesc ?? resp.developerMessage ?? 'LTC API returned failure');
+        ? t('sms.sent')
+        : (resp.ResultDesc ?? resp.developerMessage ?? t('sms.ltc_api_failure'));
       if (!isSuccess) errorMessage = resultMessage;
     } catch (err) {
       this.logger.error(
@@ -229,8 +231,8 @@ export class SmsService {
 
     if (query.startDate || query.endDate) {
       const sentAt: Record<string, unknown> = {};
-      if (query.startDate) sentAt.gte = new Date(query.startDate);
-      if (query.endDate) sentAt.lte = new Date(query.endDate);
+      if (query.startDate) sentAt.gte = parseVientianeDate(query.startDate);
+      if (query.endDate) sentAt.lte = parseVientianeDate(query.endDate, true);
       where.sentAt = sentAt;
     }
 
@@ -264,8 +266,17 @@ export class SmsService {
       this.prisma.smsLog.count({ where }),
     ]);
 
+    // Convert Date objects to Vientiane ISO strings before caching.
+    // JSON.stringify would otherwise serialize them as UTC ("...Z") strings,
+    // which the TimezoneInterceptor can't convert on cache hits (not Date instances).
+    const convertedItems = (items as Array<Record<string, unknown>>).map((item) => ({
+      ...item,
+      sentAt: item.sentAt instanceof Date ? toBangkokIso(item.sentAt) : item.sentAt,
+      deliveredAt: item.deliveredAt instanceof Date ? toBangkokIso(item.deliveredAt as Date) : item.deliveredAt,
+    }));
+
     const result: HistoryResult = {
-      items,
+      items: convertedItems,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
     await this.toCache(cacheKey, result, CACHE_TTL_HISTORY);
@@ -280,15 +291,21 @@ export class SmsService {
     const where: Record<string, unknown> = {};
     if (query.startDate || query.endDate) {
       const date: Record<string, unknown> = {};
-      if (query.startDate) date.gte = new Date(query.startDate);
-      if (query.endDate) date.lte = new Date(query.endDate);
+      if (query.startDate) date.gte = parseVientianeDate(query.startDate);
+      if (query.endDate) date.lte = parseVientianeDate(query.endDate, true);
       where.date = date;
     }
 
-    const result = await this.prisma.smsDailyStat.findMany({
+    const rows = await this.prisma.smsDailyStat.findMany({
       where,
       orderBy: { date: 'desc' },
     });
+
+    // Convert Date objects to Vientiane ISO strings before caching (same reason as getHistory).
+    const result = (rows as Array<Record<string, unknown>>).map((row) => ({
+      ...row,
+      date: row.date instanceof Date ? toBangkokIso(row.date as Date) : row.date,
+    }));
 
     await this.toCache(cacheKey, result, CACHE_TTL_STATS);
     return result;

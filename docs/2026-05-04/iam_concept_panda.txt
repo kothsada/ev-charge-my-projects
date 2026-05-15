@@ -1,0 +1,293 @@
+❯ Please review these project csms admin about role user, what does we call about user role feature? because i will will make reference to another project admin                                                    
+                                                                                                                                                                 
+⏺ Let me look at the admin service's IAM/role module to understand the naming conventions.                                                                                                                          
+                                                                                                                                                                                                                  
+  Searched for 1 pattern, read 4 files (ctrl+o to expand)                                                                                                                                                           
+  ⎿  Loaded panda-ev-csms-system-admin/CLAUDE.md                               
+                                                                                                                                                                                                                    
+⏺ Here's the complete picture of the IAM (Identity & Access Management) feature in the CSMS admin:
+                                                                                                                                                                                                                    
+  Module Name: IAM (src/modules/iam/)                                                                                                                                                                               
+                                                                                                                                                                                                                    
+  It's a 4-entity RBAC system. The entities and their naming:                                                                                                                                                       
+                                                                                                                                                                                                                    
+  ┌─────────────┬─────────────┬────────────────────────┬───────────────────────────┐                                                                                                                                
+  │   Entity    │   API tag   │ Permission slug prefix │            URL            │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤                                                                                                                                
+  │ Users       │ Users       │ users:*                │ /api/admin/v1/users       │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Roles       │ Roles       │ roles:*                │ /api/admin/v1/roles       │                                                                                                                                
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Groups      │ Groups      │ groups:*               │ /api/admin/v1/groups      │                                                                                                                                
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤                                                                                                                                
+  │ Permissions │ Permissions │ permissions:*          │ /api/admin/v1/permissions │
+  └─────────────┴─────────────┴────────────────────────┴───────────────────────────┘                                                                                                                                
+                  
+  How they relate
+
+  User ──has many──► UserRole ──► Role ──has many──► RolePermission ──► Permission
+  User ──has many──► GroupMember ──► Group ──has many──► GroupRole ──► Role                                                                                                                                         
+                                             Group ──has many──► GroupPermission ──► Permission
+                                                                                                                                                                                                                    
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).                                                             
+                                                                                                                                                                                                                    
+  Seeded system roles                                                                                                                                                                                               
+                  
+  ┌─────────────┬──────────────────────────────────────┐                                                                                                                                                            
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Users       │ Users       │ users:*                │ /api/admin/v1/users       │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Roles       │ Roles       │ roles:*                │ /api/admin/v1/roles       │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Groups      │ Groups      │ groups:*               │ /api/admin/v1/groups      │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Permissions │ Permissions │ permissions:*          │ /api/admin/v1/permissions │
+  └─────────────┴─────────────┴────────────────────────┴───────────────────────────┘
+
+  How they relate
+
+  User ──has many──► UserRole ──► Role ──has many──► RolePermission ──► Permission
+  User ──has many──► GroupMember ──► Group ──has many──► GroupRole ──► Role
+                                             Group ──has many──► GroupPermission ──► Permission
+
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).
+
+  Seeded system roles
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  │ Users       │ Users       │ users:*                │ /api/admin/v1/users       │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Roles       │ Roles       │ roles:*                │ /api/admin/v1/roles       │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Groups      │ Groups      │ groups:*               │ /api/admin/v1/groups      │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Permissions │ Permissions │ permissions:*          │ /api/admin/v1/permissions │
+  └─────────────┴─────────────┴────────────────────────┴───────────────────────────┘
+
+  How they relate
+
+  User ──has many──► UserRole ──► Role ──has many──► RolePermission ──► Permission
+  User ──has many──► GroupMember ──► Group ──has many──► GroupRole ──► Role
+                                             Group ──has many──► GroupPermission ──► Permission
+
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).
+
+  Seeded system roles
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Roles       │ Roles       │ roles:*                │ /api/admin/v1/roles       │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Groups      │ Groups      │ groups:*               │ /api/admin/v1/groups      │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Permissions │ Permissions │ permissions:*          │ /api/admin/v1/permissions │
+  └─────────────┴─────────────┴────────────────────────┴───────────────────────────┘
+
+  How they relate
+
+  User ──has many──► UserRole ──► Role ──has many──► RolePermission ──► Permission
+  User ──has many──► GroupMember ──► Group ──has many──► GroupRole ──► Role
+                                             Group ──has many──► GroupPermission ──► Permission
+
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).
+
+  Seeded system roles
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  │ Groups      │ Groups      │ groups:*               │ /api/admin/v1/groups      │
+  ├─────────────┼─────────────┼────────────────────────┼───────────────────────────┤
+  │ Permissions │ Permissions │ permissions:*          │ /api/admin/v1/permissions │
+  └─────────────┴─────────────┴────────────────────────┴───────────────────────────┘
+
+  How they relate
+
+  User ──has many──► UserRole ──► Role ──has many──► RolePermission ──► Permission
+  User ──has many──► GroupMember ──► Group ──has many──► GroupRole ──► Role
+                                             Group ──has many──► GroupPermission ──► Permission
+
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).
+
+  Seeded system roles
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  └─────────────┴─────────────┴────────────────────────┴───────────────────────────┘
+
+  How they relate
+
+  User ──has many──► UserRole ──► Role ──has many──► RolePermission ──► Permission
+  User ──has many──► GroupMember ──► Group ──has many──► GroupRole ──► Role
+                                             Group ──has many──► GroupPermission ──► Permission
+
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).
+
+  Seeded system roles
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+
+  User ──has many──► UserRole ──► Role ──has many──► RolePermission ──► Permission
+  User ──has many──► GroupMember ──► Group ──has many──► GroupRole ──► Role
+                                             Group ──has many──► GroupPermission ──► Permission
+
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).
+
+  Seeded system roles
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+                                             Group ──has many──► GroupPermission ──► Permission
+
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).
+
+  Seeded system roles
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).
+
+  Seeded system roles
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  │ admin       │ 80 (excludes roles:*, permissions:*) │
+  ├─────────────┼──────────────────────────────────────┤
+  │ viewer      │ 18 read-only                         │
+  └─────────────┴──────────────────────────────────────┘
+
+  Key terms to reference
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  │ admin       │ 80 (excludes roles:*, permissions:*) │
+  ├─────────────┼──────────────────────────────────────┤
+  │ viewer      │ 18 read-only                         │
+  └─────────────┴──────────────────────────────────────┘
+
+  Key terms to reference
+  │ admin       │ 80 (excludes roles:*, permissions:*) │
+  ├─────────────┼──────────────────────────────────────┤
+  │ viewer      │ 18 read-only                         │
+  └─────────────┴──────────────────────────────────────┘
+
+  Key terms to reference
+
+  - The whole feature is called IAM or RBAC
+  └─────────────┴──────────────────────────────────────┘
+
+  Key terms to reference
+
+  - The whole feature is called IAM or RBAC
+  - The access control model is Role-Based with optional Group aggregation
+  - Permission slugs follow {resource}:{action} format (e.g. stations:read, users:create)
+
+  - The whole feature is called IAM or RBAC
+  - The access control model is Role-Based with optional Group aggregation
+  - Permission slugs follow {resource}:{action} format (e.g. stations:read, users:create)
+  - System roles (isSystem: true) cannot be deleted
+  - There are no "super-user" flags — all access flows through permissions only
+  - The access control model is Role-Based with optional Group aggregation
+  - Permission slugs follow {resource}:{action} format (e.g. stations:read, users:create)
+  - System roles (isSystem: true) cannot be deleted
+  - There are no "super-user" flags — all access flows through permissions only
+
+  - System roles (isSystem: true) cannot be deleted
+  - There are no "super-user" flags — all access flows through permissions only
+
+  So when referencing this in another project admin, the canonical name is IAM module with Roles, Groups, and Permissions as its three sub-features.
+
+✻ Brewed for 25s
+
+  So when referencing this in another project admin, the canonical name is IAM module with Roles, Groups, and Permissions as its three sub-features.
+
+✻ Brewed for 25s
+  So when referencing this in another project admin, the canonical name is IAM module with Roles, Groups, and Permissions as its three sub-features.
+
+  So when referencing this in another project admin, the canonical name is IAM module with Roles, Groups, and Permissions as its three sub-features.
+
+  How they relate
+
+  User ──has many──► UserRole ──► Role ──has many──► RolePermission ──► Permission
+  User ──has many──► GroupMember ──► Group ──has many──► GroupRole ──► Role
+                                             Group ──has many──► GroupPermission ──► Permission
+
+  Effective permissions at runtime = merged union from all user's roles + all user's groups (fetched fresh on every request in JwtStrategy.validate()).
+
+  Seeded system roles
+
+  ┌─────────────┬──────────────────────────────────────┐
+  │  Role slug  │             Permissions              │
+  │  Role slug  │             Permissions              │
+  ├─────────────┼──────────────────────────────────────┤
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  │ super-admin │ All 90                               │
+  ├─────────────┼──────────────────────────────────────┤
+  ├─────────────┼──────────────────────────────────────┤
+  │ admin       │ 80 (excludes roles:*, permissions:*) │
+  ├─────────────┼──────────────────────────────────────┤
+  │ viewer      │ 18 read-only                         │
+  │ viewer      │ 18 read-only                         │
+  └─────────────┴──────────────────────────────────────┘
+
+  Key terms to reference
+
+  - The whole feature is called IAM or RBAC
+  - The access control model is Role-Based with optional Group aggregation
+  - Permission slugs follow {resource}:{action} format (e.g. stations:read, users:create)
+  - System roles (isSystem: true) cannot be deleted
+  - There are no "super-user" flags — all access flows through permissions only
+
+  So when referencing this in another project admin, the canonical name is IAM module with Roles, Groups, and Permissions as its three sub-features.
+
+✻ Brewed for 25s
+
+※ recap: Reviewing the CSMS admin IAM module to understand its naming conventions for reference in another project. No code changes made; ready to continue when you return. (disable recaps in /config)
+
+❯ save concept aboaut IAM to a file please                                                                                                                                                                          
+  ⎿  Loaded panda-ev-ocpp/CLAUDE.md
+
+  Read 1 file, recalled 1 memory, wrote 2 memories (ctrl+o to expand)
+
+⏺ Saved to memory/project_iam_rbac.md and indexed in MEMORY.md. It captures the module structure, entity relationships, effective-permission merge logic, seeded roles, and permission slug format — enough context
+  to reference when building the same pattern in another project.
+
+✻ Brewed for 30s
+
+※ recap: Reviewed the IAM/RBAC module in panda-ev-csms-system-admin to understand its structure for reference in another admin project, then saved the concept to memory. No pending actions. (disable recaps in
+  /config)

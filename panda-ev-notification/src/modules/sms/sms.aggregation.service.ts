@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../configs/prisma/prisma.service';
 import { SmsType, SmsNetworkType } from '../../../generated/prisma/client';
-import { startOfDay } from '../../common/helpers/date.helper';
+import { toVientianeDateStr } from '../../common/helpers/date.helper';
 
 interface SmsSentEvent {
   date: Date;
@@ -24,7 +24,7 @@ export class SmsAggregationService {
    */
   async onSmsSent(event: SmsSentEvent): Promise<void> {
     try {
-      const day = startOfDay(event.date);
+      const dateStr = toVientianeDateStr(event.date);
       const isOnnet = event.networkType === ('ONNET' as SmsNetworkType);
       const onnetCount = isOnnet ? 1 : 0;
       const onnetAmt = BigInt(isOnnet ? event.costLak : 0);
@@ -47,7 +47,7 @@ export class SmsAggregationService {
            otp_count, text_count,
            unique_recipients)
         VALUES
-          (gen_random_uuid(), ${day}::date,
+          (gen_random_uuid(), ${dateStr}::date,
            ${onnetCount}, ${onnetAmt},
            ${offnetCount}, ${offnetAmt},
            1, ${totalAmt},

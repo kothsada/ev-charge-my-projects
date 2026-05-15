@@ -34,3 +34,4 @@ configMapGenerator:
       - SMTP_SECURE="true"
       - SMTP_USER="resend"
       - SMTP_FROM="Panda EV Hub <noreply@panda-ev.com>"
+      - GATEWAY_URL="http://panda-gateway-api-service"

@@ -1,0 +1,99 @@
+---
+  Timeline — PANDA-PHONSAY-01 this morning
+
+  Time: 07:20:22
+  Event: Session 4f41bdb2 created → RemoteStart sent → TIMEOUT (15s no 
+    response) → session FAILED
+  ────────────────────────────────────────
+  Time: 07:30:55
+  Event: Session 5eb1204f created → RemoteStart sent → TIMEOUT again →
+    session FAILED
+  ────────────────────────────────────────
+  Time: charger manually restarted
+  Event:
+  ────────────────────────────────────────
+  Time: 07:37:03
+  Event: Session e406af74 created → RemoteStart sent → Accepted → charging
+    begins
+  ────────────────────────────────────────
+  Time: 14:40 now
+  Event: Actively charging connector 2, txId=126, ~120kW, SoC 85%→89% ✓
+
+  ---
+  Root cause: Charger firmware freeze (zombie state)
+  
+  The charger's OCPP communication layer (WebSocket, Heartbeat,
+  StatusNotification) was running fine — it appeared ONLINE to the server.
+  But the charging management layer (the part that processes RemoteStart
+  and starts physical charging) was frozen internally.
+
+  The OCPP service sent RemoteStart over the live WebSocket but the
+  charger's firmware never processed it, so no CALLRESULT came back within
+  15 seconds → TIMEOUT.
+
+  A physical restart reinitializes the firmware completely → RemoteStart
+  works again.
+
+  --- for my ATCODE TEAM
+  Improvement: Auto-soft-reset on RemoteStart TIMEOUT
+
+  
+  Instead of immediately failing the session and making the user call
+  someone, the OCPP service can automatically send a Reset (Soft) to the
+  charger after TIMEOUT, then notify the user to retry in ~30 seconds. Want
+   me to implement that in session.service.ts?
+
+   Both services type-check clean. Here's a summary of everything
+  implemented:
+   
+  ---
+  OCPP service (session.service.ts)
+  
+  fire-and-forget promise
+  - 60-second in-memory debounce per charger identity (pendingAutoReset
+  Set) — prevents double-reset if two sessions time out in quick succession
+  - Does not reset on REJECTED or NOT_BOOTED — those aren't firmware freeze
+  - Adds resetInitiated: true to the remote_start.failed RabbitMQ event
+  - Logs the Reset response (Accepted/Rejected) when it arrives
+
+  Mobile service (ocpp-consumer.service.ts)
+  - Reads resetInitiated from the event
+  - Sends a different FCM notification when true: "Charger Restarting — 
+  please try again in ~30 seconds" instead of the generic "not responding"
+  message
+  
+  i18n (en / lo / zh) — new key push.remote_start_failed_resetting added to
+   all three translation files.
+
+  What would have happened at PHONSAY-01 this morning with this fix: after
+  the 07:20 TIMEOUT the OCPP service would have sent a soft reset
+
+⏺ Bash(npx tsc --noEmit 2>&1 | head -20)
+  ⎿  (No output)
+
+⏺ Both services type-check clean. Here's a summary of everything
+  implemented:
+
+  ---
+  OCPP service (session.service.ts)
+  - After RemoteStart TIMEOUT, fires sendReset(identity, Soft) as a
+  fire-and-forget promise
+  - 60-second in-memory debounce per charger identity (pendingAutoReset
+  Set) — prevents double-reset if two sessions time out in quick succession
+  - Does not reset on REJECTED or NOT_BOOTED — those aren't firmware freeze
+  - Adds resetInitiated: true to the remote_start.failed RabbitMQ event
+  - Logs the Reset response (Accepted/Rejected) when it arrives
+
+  Mobile service (ocpp-consumer.service.ts)
+  - Reads resetInitiated from the event
+  - Sends a different FCM notification when true: "Charger Restarting —
+  please try again in ~30 seconds" instead of the generic "not responding"
+  message
+
+  i18n (en / lo / zh) — new key push.remote_start_failed_resetting added to
+   all three translation files.
+
+  What would have happened at PHONSAY-01 this morning with this fix: after
+  the 07:20 TIMEOUT the OCPP service would have sent a soft reset
+  automatically, and the user would have received "Charger Restarting" push
+   instead of needing to go manually restart it.

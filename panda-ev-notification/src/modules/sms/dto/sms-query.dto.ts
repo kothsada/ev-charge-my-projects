@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 
 enum SmsStatusFilter {
@@ -50,25 +50,25 @@ export class SmsHistoryQueryDto {
   @IsString()
   userId?: string;
 
-  @ApiPropertyOptional({ description: 'Start date (ISO 8601)', example: '2026-01-01' })
+  @ApiPropertyOptional({ description: 'Filter from this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-01-01' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   startDate?: string;
 
-  @ApiPropertyOptional({ description: 'End date (ISO 8601)', example: '2026-12-31' })
+  @ApiPropertyOptional({ description: 'Filter until this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-12-31' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   endDate?: string;
 }
 
 export class SmsStatsQueryDto {
-  @ApiPropertyOptional({ description: 'Start date (ISO 8601)', example: '2026-01-01' })
+  @ApiPropertyOptional({ description: 'Filter from this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-01-01' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   startDate?: string;
 
-  @ApiPropertyOptional({ description: 'End date (ISO 8601)', example: '2026-12-31' })
+  @ApiPropertyOptional({ description: 'Filter until this date (Asia/Vientiane). Format: YYYY-MM-DD', example: '2026-12-31' })
   @IsOptional()
-  @IsISO8601()
+  @IsString()
   endDate?: string;
 }
