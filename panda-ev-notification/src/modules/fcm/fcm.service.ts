@@ -15,6 +15,8 @@ interface FcmSendResult {
   sent: number;
   failed: number;
   staleTokens: string[];
+  /** Tally of every FCM error code encountered: { 'messaging/sender-id-mismatch': 2, … } */
+  errorCodes: Record<string, number>;
 }
 
 const STALE_TOKEN_CODES = [
@@ -80,11 +82,11 @@ export class FcmService implements OnModuleInit {
   async send(tokens: string[], notification: FcmNotificationPayload): Promise<FcmSendResult> {
     if (!this.configured || !this.app) {
       this.logger.warn('FCM not configured — skipping send');
-      return { sent: 0, failed: tokens.length, staleTokens: [] };
+      return { sent: 0, failed: tokens.length, staleTokens: [], errorCodes: {} };
     }
 
     if (!tokens.length) {
-      return { sent: 0, failed: 0, staleTokens: [] };
+      return { sent: 0, failed: 0, staleTokens: [], errorCodes: {} };
     }
 
     const messaging = admin.messaging(this.app);
@@ -92,6 +94,7 @@ export class FcmService implements OnModuleInit {
     let totalSent = 0;
     let totalFailed = 0;
     const staleTokens: string[] = [];
+    const errorCodes: Record<string, number> = {};
 
     for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
       const batch = tokens.slice(i, i + BATCH_SIZE);
@@ -132,8 +135,17 @@ export class FcmService implements OnModuleInit {
 
         response.responses.forEach((resp, idx) => {
           if (!resp.success && resp.error) {
-            if (STALE_TOKEN_CODES.includes(resp.error.code)) {
+            const code = resp.error.code;
+            // Track frequency of every error code for diagnostics
+            errorCodes[code] = (errorCodes[code] ?? 0) + 1;
+
+            if (STALE_TOKEN_CODES.includes(code)) {
               staleTokens.push(batch[idx]);
+            } else {
+              // Log non-stale FCM errors so we can diagnose without reading raw SDK
+              this.logger.warn(
+                `FCM error for token[${i + idx}]: ${code} — ${resp.error.message ?? ''}`,
+              );
             }
           }
         });
@@ -143,10 +155,69 @@ export class FcmService implements OnModuleInit {
       }
     }
 
+    const errorSummary = Object.entries(errorCodes)
+      .map(([code, count]) => `${code}×${count}`)
+      .join(', ');
     this.logger.log(
-      `FCM send complete: sent=${totalSent}, failed=${totalFailed}, stale=${staleTokens.length}`,
+      `FCM send complete: sent=${totalSent}, failed=${totalFailed}, stale=${staleTokens.length}` +
+        (errorSummary ? `, errors=[${errorSummary}]` : ''),
     );
-    return { sent: totalSent, failed: totalFailed, staleTokens };
+    return { sent: totalSent, failed: totalFailed, staleTokens, errorCodes };
+  }
+
+  async subscribeToTopics(token: string, topics: string[]): Promise<void> {
+    if (!this.configured || !this.app) {
+      this.logger.warn('FCM not configured — skipping topic subscription');
+      return;
+    }
+    const messaging = admin.messaging(this.app);
+    for (const topic of topics) {
+      try {
+        await messaging.subscribeToTopic([token], topic);
+        this.logger.debug(`Subscribed token to topic "${topic}"`);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to subscribe token to topic "${topic}": ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  async unsubscribeFromTopics(token: string, topics: string[]): Promise<void> {
+    if (!this.configured || !this.app) return;
+    const messaging = admin.messaging(this.app);
+    for (const topic of topics) {
+      try {
+        await messaging.unsubscribeFromTopic([token], topic);
+        this.logger.debug(`Unsubscribed token from topic "${topic}"`);
+      } catch {
+        // ignore — token may already be invalid or not subscribed
+      }
+    }
+  }
+
+  async sendDataToTopic(
+    topic: string,
+    data: Record<string, string>,
+  ): Promise<{ messageId: string } | null> {
+    if (!this.configured || !this.app) {
+      this.logger.warn('FCM not configured — skipping data topic send');
+      return null;
+    }
+    try {
+      const messaging = admin.messaging(this.app);
+      const messageId = await messaging.send({
+        topic,
+        data,
+        android: { priority: 'high' },
+        apns: { headers: { 'apns-priority': '5', 'apns-push-type': 'background' }, payload: { aps: { 'content-available': 1 } } },
+      });
+      this.logger.log(`FCM silent data message sent to topic "${topic}": ${messageId}`);
+      return { messageId };
+    } catch (err) {
+      this.logger.error(`FCM silent data send failed: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   async sendToTopic(

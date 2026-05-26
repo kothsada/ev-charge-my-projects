@@ -53,9 +53,14 @@ export class NotificationProcessor {
 
   async process(msg: ProcessNotificationDto): Promise<ProcessNotificationResult> {
     // 1. Dedup check (per session+type)
+    // IMPORTANT: We check-only here (without marking).  The key is marked only
+    // AFTER a successful FCM delivery in step 4.  This allows retries to reach
+    // FCM when the first attempt failed (e.g. Firebase not configured, network
+    // error, all tokens stale) — a previous bug marked the key before the send
+    // so any failure permanently suppressed the notification for 24 h.
     if (!msg.skipDedup && msg.sessionId) {
-      const isNew = await this.dedup.isNewNotification(msg.sessionId, msg.type);
-      if (!isNew) {
+      const isDup = await this.dedup.isDuplicate(msg.sessionId, msg.type);
+      if (isDup) {
         this.logger.debug(`Duplicate suppressed: ${msg.sessionId}/${msg.type}`);
         await this.aggregation.onNotificationSent(msg.type, 'FCM', 'SUPPRESSED');
         return { status: 'SUPPRESSED' };
@@ -104,8 +109,26 @@ export class NotificationProcessor {
 
     if (result && result.sent > 0) {
       status = 'SENT';
+      // Mark dedup key ONLY after confirmed FCM delivery so that retries are
+      // not blocked when the first attempt failed.
+      if (!msg.skipDedup && msg.sessionId) {
+        await this.dedup.markSent(msg.sessionId, msg.type);
+      }
     } else if (result?.sent === 0) {
       status = 'FAILED';
+      // Provide a meaningful error so admins can diagnose without reading pod logs
+      if (!this.fcm.isConfigured) {
+        errorMessage = 'Firebase not configured — check FIREBASE_* env vars in K8s secret';
+      } else if (result.staleTokens.length === tokens.length) {
+        errorMessage = `All ${tokens.length} FCM token(s) are stale/unregistered`;
+      } else {
+        const errorSummary = Object.entries(result.errorCodes ?? {})
+          .map(([code, count]) => `${code}×${count}`)
+          .join(', ');
+        errorMessage = errorSummary
+          ? `FCM: 0 delivered, ${result.failed} failed — ${errorSummary}`
+          : `FCM: 0 delivered, ${result.failed} failed`;
+      }
     }
 
     // 5. Handle stale tokens
@@ -128,29 +151,52 @@ export class NotificationProcessor {
       await this.deviceService.updateLastUsed(sentTokens).catch(() => null);
     }
 
-    // 6. Log to DB
-    const log = await this.prisma.notificationLog
-      .create({
-        data: {
-          userId: msg.userId,
-          sessionId: msg.sessionId,
-          stationId: msg.stationId,
-          chargerIdentity: msg.chargerIdentity,
-          channel: 'FCM',
-          type: msg.type,
-          title: msg.title,
-          body: msg.body,
-          payload: msg as unknown as Prisma.InputJsonValue,
-          status,
-          fcmMessageId,
-          errorMessage,
-          retryCount: 0,
-        },
-      })
-      .catch((err) => {
-        this.logger.error(`Failed to log notification: ${err.message}`);
-        return null;
-      });
+    // 6. Log to DB.
+    // Use upsert (when sessionId is set) so that a retry after a FAILED first
+    // attempt updates the existing FAILED record to SENT instead of crashing on
+    // the @@unique([sessionId, type]) constraint.
+    const commonData = {
+      userId: msg.userId,
+      sessionId: msg.sessionId,
+      stationId: msg.stationId,
+      chargerIdentity: msg.chargerIdentity,
+      channel: 'FCM' as const,
+      type: msg.type,
+      title: msg.title,
+      body: msg.body,
+      payload: msg as unknown as Prisma.InputJsonValue,
+      status,
+      fcmMessageId,
+      errorMessage,
+    };
+
+    const log = msg.sessionId
+      ? await this.prisma.notificationLog
+          .upsert({
+            where: {
+              sessionId_type: { sessionId: msg.sessionId, type: msg.type },
+            },
+            create: { ...commonData, retryCount: 0 },
+            update: {
+              status,
+              ...(fcmMessageId ? { fcmMessageId } : {}),
+              errorMessage: errorMessage ?? null,
+              retryCount: { increment: 1 },
+              sentAt: new Date(),
+            },
+          })
+          .catch((err: Error) => {
+            this.logger.error(
+              `Failed to upsert notification log: ${err.message}`,
+            );
+            return null;
+          })
+      : await this.prisma.notificationLog
+          .create({ data: { ...commonData, retryCount: 0 } })
+          .catch((err: Error) => {
+            this.logger.error(`Failed to log notification: ${err.message}`);
+            return null;
+          });
 
     // 7. Update aggregated stats
     await this.aggregation.onNotificationSent(msg.type, 'FCM', status);

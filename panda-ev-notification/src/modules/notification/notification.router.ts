@@ -9,6 +9,8 @@ import { PrismaService } from '../../configs/prisma/prisma.service';
 import { Prisma } from '../../../generated/prisma/client';
 import { nowBangkokIso } from '../../common/helpers/date.helper';
 
+const DEFAULT_TOPICS = ['all_users'];
+
 @Injectable()
 export class NotificationRouter implements OnModuleInit {
   private readonly logger = new Logger(NotificationRouter.name);
@@ -56,17 +58,23 @@ export class NotificationRouter implements OnModuleInit {
       await this.processor.process({ ...(msg as unknown as ProcessNotificationDto), skipDedup: true });
     } else if (routingKey === 'notification.overstay_reminder') {
       await this.handleOverstayReminder(msg);
+    } else if (routingKey === 'notification.config_invalidate') {
+      await this.handleConfigInvalidate(msg);
     } else if (routingKey === 'device.registered') {
       // Mobile API publishes this when a user registers a new FCM token
+      const fcmToken = msg.fcmToken as string;
       await this.deviceService.registerToken(
         msg.userId as string,
-        msg.fcmToken as string,
+        fcmToken,
         msg.platform as string | undefined,
         msg.appVersion as string | undefined,
       );
+      await this.fcm.subscribeToTopics(fcmToken, DEFAULT_TOPICS);
     } else if (routingKey === 'device.unregistered') {
       // Mobile API publishes this when a user logs out / removes a device
-      await this.deviceService.unregisterToken(msg.fcmToken as string);
+      const fcmToken = msg.fcmToken as string;
+      await this.fcm.unsubscribeFromTopics(fcmToken, DEFAULT_TOPICS);
+      await this.deviceService.unregisterToken(fcmToken);
     } else {
       this.logger.warn(`Unknown routingKey: ${routingKey}`);
     }
@@ -144,6 +152,16 @@ export class NotificationRouter implements OnModuleInit {
       }
     }
     // Other events (charger.booted, connector.status_changed) are handled by Mobile service
+  }
+
+  private async handleConfigInvalidate(msg: Record<string, unknown>) {
+    // Silent data-only FCM push to all registered devices — app handles in background
+    // No visible notification is shown; app receives { event: 'config_updated', version, key }
+    await this.fcm.sendDataToTopic('all_users', {
+      event: 'config_updated',
+      version: (msg.version as string) ?? new Date().toISOString(),
+      key: (msg.key as string) ?? '',
+    });
   }
 
   private async handleOverstayReminder(msg: Record<string, unknown>) {
