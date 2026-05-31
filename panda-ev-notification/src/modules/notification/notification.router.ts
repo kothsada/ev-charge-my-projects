@@ -6,7 +6,7 @@ import { AdminStatsGateway } from '../websocket/admin-stats.gateway';
 import { DeviceService } from '../device/device.service';
 import { FcmService } from '../fcm/fcm.service';
 import { PrismaService } from '../../configs/prisma/prisma.service';
-import { Prisma } from '../../../generated/prisma/client';
+import { Prisma, NotificationStatus } from '../../../generated/prisma/client';
 import { nowBangkokIso } from '../../common/helpers/date.helper';
 
 const DEFAULT_TOPICS = ['all_users'];
@@ -83,6 +83,9 @@ export class NotificationRouter implements OnModuleInit {
   private async handleTopicNotification(msg: Record<string, unknown>) {
     const topic = (msg.topic as string) || 'all_users';
     const type = (msg.type as string) || 'admin_broadcast';
+    // notificationId is passed from admin service — used as unique sessionId so each
+    // broadcast gets its own log row and retries use upsert instead of duplicate-key insert.
+    const notificationId = msg.notificationId as string | undefined;
 
     const result = await this.fcm.sendToTopic(topic, {
       title: msg.title as string,
@@ -94,22 +97,49 @@ export class NotificationRouter implements OnModuleInit {
 
     const status = result ? 'SENT' : 'FAILED';
 
-    await this.prisma.notificationLog
-      .create({
-        data: {
-          userId: `topic:${topic}`,
-          channel: 'FCM',
-          type,
-          title: msg.title as string,
-          body: msg.body as string,
-          payload: msg as unknown as Prisma.InputJsonValue,
-          status,
-          fcmMessageId: result?.messageId ?? null,
-        },
-      })
-      .catch((err: Error) =>
-        this.logger.error(`Failed to log topic notification: ${err.message}`),
-      );
+    const logData = {
+      userId: `topic:${topic}`,
+      sessionId: notificationId ?? null,
+      channel: 'FCM' as const,
+      type,
+      title: msg.title as string,
+      body: msg.body as string,
+      payload: msg as unknown as Prisma.InputJsonValue,
+      status: status as NotificationStatus,
+      fcmMessageId: result?.messageId ?? null,
+      retryCount: 0,
+    };
+
+    // Use upsert when notificationId is available so DLQ retries update the existing
+    // FAILED row instead of trying a duplicate insert (@@unique([sessionId, type])).
+    if (notificationId) {
+      await this.prisma.notificationLog
+        .upsert({
+          where: { sessionId_type: { sessionId: notificationId, type } },
+          create: logData,
+          update: {
+            status,
+            fcmMessageId: result?.messageId ?? null,
+            retryCount: { increment: 1 },
+            sentAt: new Date(),
+          },
+        })
+        .catch((err: Error) =>
+          this.logger.error(
+            `Failed to upsert topic notification log [${notificationId}]: ${err.message}`,
+          ),
+        );
+    } else {
+      // Legacy path (no notificationId) — plain insert; may fail on 2nd broadcast with
+      // same type due to @@unique([sessionId, type]) with NULL sessionId on some PG versions.
+      await this.prisma.notificationLog
+        .create({ data: logData })
+        .catch((err: Error) =>
+          this.logger.error(
+            `Failed to create topic notification log: ${err.message}`,
+          ),
+        );
+    }
 
     await this.aggregation.onNotificationSent(type, 'FCM', status);
 

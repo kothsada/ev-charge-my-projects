@@ -1,0 +1,2 @@
+tar -pcvf pkg.tar ./*
+

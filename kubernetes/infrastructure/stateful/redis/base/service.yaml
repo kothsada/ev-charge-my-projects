@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # ຊື່ຕ້ອງເປັນ "redis-service" — ທຸກ NestJS service ອ້າງອີງ DNS ຊື່ນີ້
+  name: redis-service
+  labels:
+    app: panda-redis
+spec:
+  selector:
+    app: panda-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+  type: ClusterIP

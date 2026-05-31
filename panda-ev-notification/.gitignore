@@ -22,6 +22,10 @@ npm-debug.log*
 
 #secret files
 create-secret.sh
+*.sh.bk
+
+# Session docs
+docs/
 
 # OS
 .DS_Store

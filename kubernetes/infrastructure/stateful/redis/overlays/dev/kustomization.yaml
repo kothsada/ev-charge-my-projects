@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: panda-ev-dev
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: PersistentVolumeClaim
+      name: redis-data-pvc
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: "2Gi"

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # ຊື່ຕ້ອງເປັນ "panda-rabbitmq" — create-secret.sh ແລະ NestJS services ອ້າງອີງຊື່ນີ້
+  name: panda-rabbitmq
+  labels:
+    app: panda-rabbitmq-dev
+spec:
+  selector:
+    app: panda-rabbitmq-dev
+  ports:
+    - port: 5672
+      targetPort: 5672
+      name: amqp
+      protocol: TCP
+    - port: 15672
+      targetPort: 15672
+      name: management
+      protocol: TCP
+  type: ClusterIP

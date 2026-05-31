@@ -14,6 +14,8 @@ keys/
 # Kubernetes secret creation scripts (contain credentials)
 create-secret.sh
 **/create-secret.sh
+*.sh.bk
+**/*.sh.bk
 
 # GCP/K8s credential notes
 kubectl-gcp-create-secret-env.txt
@@ -62,6 +64,11 @@ Thumbs.db
 *.sublime-workspace
 *.sublime-project
 .c9/
+
+# ─── Documentation & Session Notes ──────────────────────────────────────────
+docs/
+backup_db/
+logs-test/
 
 # ─── Personal / Export Files ─────────────────────────────────────────────────
 chat-export/
