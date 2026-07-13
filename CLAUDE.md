@@ -197,23 +197,6 @@ Translation files: `src/common/i18n/translations/{en,lo,zh}.json`. Add new keys 
 
 **Exception pattern**: Use typed exceptions (`NotFoundException`, `ConflictException`) or `HttpException(i18nMessage('key'), HttpStatus.X)`. `TooManyRequestsException` does not exist in NestJS — use `HttpException` with `HttpStatus.TOO_MANY_REQUESTS`.
 
-### Module Inventory
-
-**Admin** (`panda-ev-csms-system-admin/src/modules/`):
-`auth`, `iam` (users/roles/groups/permissions), `cms`, `news`, `notification`, `noti-management` (send/broadcast via notification service REST), `audit-log`, `system-settings`, `station`, `location`, `pricing`, `mobile-user`, `legal-content`, `gateway-payments` (admin view of payment records from Gateway), `enums`, `health`, `cache`, `upload`
-
-**Mobile** (`panda-ev-client-mobile/src/modules/`):
-`auth`, `profile`, `vehicle`, `wallet`, `charging-session`, `station`, `payment`, `invoice`, `financial`, `content`, `banner`, `news`, `favorite`, `fcm`, `notification`, `app-config`, `enums`, `health`, `cache`, `audit-log`
-
-**OCPP** (`panda-ev-ocpp/src/modules/`):
-`ocpp` (single module — handles all charger WebSocket protocol, auth, and message routing)
-
-**Notification** (`panda-ev-notification/src/modules/`):
-`notification` (processor, router), `fcm` (delivery), `dedup`, `rate-limit`, `device` (FCM token registry), `aggregation` (stats), `template`, `websocket` (admin dashboard), `sms` (LTC SMS delivery + aggregation), `health`
-
-**Gateway** (`panda-ev-gateway-services/src/modules/`):
-`payment` (only module — BCEL QR initiation, PubNub callback, void, refund, mode switch, reconciliation)
-
 ### Gateway Service — BCEL OnePay QR
 
 The Gateway handles all payment integration for the Laos market (LAK currency). It is the only service that talks to BCEL's REST API.
