@@ -25,7 +25,32 @@ patches:
           - "--http-address=0.0.0.0"
           - "pandaev:asia-southeast1:panda-ev-instance-system-db-a2"
 
-      # 2. ADD Mobile DB Proxy (Port 5434) for cross-service wallet mutations
+      # 2. ADD Gateway/Core DB Proxy (Port 5433) for panda_ev_gateway schema reads
+      - op: add
+        path: /spec/template/spec/containers/-
+        value:
+          name: cloud-sql-proxy-core
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.2
+          args:
+            - "--structured-logs"
+            - "--port=5433"
+            - "--private-ip"
+            - "--health-check"
+            - "--http-address=0.0.0.0"
+            - "--http-port=9091"
+            - "pandaev:asia-southeast1:panda-ev-instance-core-db-a2"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+      # 3. ADD Mobile DB Proxy (Port 5434) for cross-service wallet mutations
       - op: add
         path: /spec/template/spec/containers/-
         value:
@@ -50,7 +75,7 @@ patches:
               cpu: "200m"
               memory: "128Mi"
 
-      # 3. Increase Main App Resources
+      # 4. Increase Main App Resources
       - op: replace
         path: /spec/template/spec/containers/0/resources/requests/cpu
         value: "500m"

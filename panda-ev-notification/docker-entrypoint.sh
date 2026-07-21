@@ -20,17 +20,7 @@ else
 fi
 
 echo "Running database migrations..."
-migration_retries=0
-max_migration_retries=5
-until npx prisma migrate deploy --schema=./prisma/schema.prisma; do
-  migration_retries=$((migration_retries + 1))
-  if [ $migration_retries -ge $max_migration_retries ]; then
-    echo "Migrations failed after $max_migration_retries attempts. Exiting."
-    exit 1
-  fi
-  echo "Migration attempt $migration_retries failed. Retrying in 4 seconds..."
-  sleep 4
-done
+npx prisma migrate deploy --schema=./prisma/schema.prisma
 echo "Migrations applied"
 
 echo "Starting Panda EV Notification Service..."

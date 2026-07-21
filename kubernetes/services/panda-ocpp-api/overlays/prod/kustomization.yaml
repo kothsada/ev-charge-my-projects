@@ -11,6 +11,11 @@ patches:
       kind: Deployment
       name: panda-ocpp-api
     patch: |-
+      # 0. Increase Replicas to 2 for High Availability
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
       # 1. Update Master Proxy (Port 5432)
       - op: replace
         path: /spec/template/spec/containers/1/name

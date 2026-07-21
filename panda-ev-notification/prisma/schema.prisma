@@ -159,6 +159,46 @@ model UserNotificationPreference {
 }
 
 // ============================================================
+// BROADCAST NOTIFICATIONS
+// ============================================================
+
+/// One row per admin broadcast (FCM topic send). Read state is tracked per user
+/// in BroadcastReadStatus so the notification_logs table stays user-specific.
+model NotificationBroadcast {
+  id           String               @id @default(uuid()) @db.Uuid
+  type         String               @default("admin_broadcast") @db.VarChar(100)
+  title        String               @db.VarChar(255)
+  body         String               @db.VarChar(1000)
+  payload      Json?
+  channel      NotificationChannel  @default(FCM)
+  priority     NotificationPriority @default(HIGH)
+  fcmMessageId String?              @map("fcm_message_id") @db.VarChar(500)
+  status       NotificationStatus   @default(SENT)
+  sentAt       DateTime             @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  readStatuses BroadcastReadStatus[]
+
+  @@index([sentAt(sort: Desc)])
+  @@map("notification_broadcasts")
+  @@schema("panda_ev_noti")
+}
+
+/// Per-user read state for broadcasts — created on first interaction (markAsRead).
+model BroadcastReadStatus {
+  userId      String                @map("user_id") @db.VarChar(150)
+  broadcastId String                @map("broadcast_id") @db.Uuid
+  status      NotificationStatus    @default(SENT)
+  readAt      DateTime?             @map("read_at") @db.Timestamptz(6)
+
+  broadcast   NotificationBroadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+
+  @@id([userId, broadcastId])
+  @@index([userId])
+  @@map("broadcast_read_status")
+  @@schema("panda_ev_noti")
+}
+
+// ============================================================
 // AGGREGATED STATISTICS
 // ============================================================
 

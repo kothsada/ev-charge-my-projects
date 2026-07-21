@@ -16,6 +16,13 @@ import { PrismaService } from '../../configs/prisma/prisma.service';
 import { SendNotificationDto } from './dto/send-notification.dto';
 import { nowBangkokIso, parseVientianeDate } from '../../common/helpers/date.helper';
 import { t } from '../../common/i18n';
+import {
+  ApiSuccessResponse,
+  ApiMessageResponse,
+  ApiAuthErrors,
+  ApiCrudReadErrors,
+  ApiValidationResponse,
+} from '../../common/decorators';
 
 class NotificationHistoryQuery {
   @ApiPropertyOptional({ description: 'Filter by user ID' })
@@ -104,14 +111,46 @@ export class NotificationController {
   ) {}
 
   @Post('send')
-  @ApiOperation({ summary: 'Send a targeted notification' })
+  @ApiOperation({
+    summary: 'Send a targeted notification',
+    description: 'Bypasses RabbitMQ and processes the notification synchronously through the full pipeline (dedup → rate-limit → FCM → DB log → aggregation → WebSocket).',
+  })
+  @ApiSuccessResponse(200, 'Notification sent', {
+    status: 'SENT',
+    logId: 'uuid',
+    suppressed: false,
+    suppressReason: null,
+  })
+  @ApiValidationResponse()
+  @ApiAuthErrors()
   async send(@Body() dto: SendNotificationDto) {
     const result = await this.processor.process(dto);
     return result;
   }
 
   @Get('history')
-  @ApiOperation({ summary: 'Get notification history with pagination' })
+  @ApiOperation({
+    summary: 'Get notification history with pagination',
+    description: 'Returns paginated notification log. Filter by userId, status, type, or date range (Asia/Vientiane timezone).',
+  })
+  @ApiSuccessResponse(200, 'Notification history retrieved', [
+    {
+      id: 'uuid',
+      userId: 'uuid',
+      type: 'session_completed',
+      title: 'Charging Complete',
+      body: 'Your session has ended. Please unplug to avoid parking fees.',
+      channel: 'FCM',
+      status: 'DELIVERED',
+      sessionId: 'uuid',
+      stationId: 'uuid',
+      sentAt: '2026-06-16T10:00:00+07:00',
+      deliveredAt: '2026-06-16T10:00:01+07:00',
+      readAt: null,
+      clickedAt: null,
+    },
+  ])
+  @ApiAuthErrors()
   async getHistory(@Query() query: NotificationHistoryQuery) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -153,7 +192,16 @@ export class NotificationController {
   }
 
   @Patch(':id/status')
-  @ApiOperation({ summary: 'Update notification delivery status' })
+  @ApiOperation({
+    summary: 'Update notification delivery status',
+    description: 'Marks a notification as DELIVERED, READ, or CLICKED and timestamps the transition.',
+  })
+  @ApiSuccessResponse(200, 'Notification status updated', {
+    id: 'uuid',
+    status: 'READ',
+    readAt: '2026-06-16T10:01:00+07:00',
+  })
+  @ApiCrudReadErrors('Notification not found')
   async updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
     const updateData: Record<string, unknown> = { status: dto.status };
     const ts = new Date();
@@ -171,7 +219,22 @@ export class NotificationController {
   }
 
   @Get('stats/daily')
-  @ApiOperation({ summary: 'Get pre-aggregated daily notification stats' })
+  @ApiOperation({
+    summary: 'Get pre-aggregated daily notification stats',
+    description: 'Returns per-day delivery stats from the `notification_daily_stats` table. Filter by type and date range.',
+  })
+  @ApiSuccessResponse(200, 'Daily stats retrieved', [
+    {
+      id: 'uuid',
+      date: '2026-06-16T00:00:00.000Z',
+      type: 'session_completed',
+      channel: 'FCM',
+      sentCount: 142,
+      deliveredCount: 138,
+      failedCount: 4,
+    },
+  ])
+  @ApiAuthErrors()
   async getDailyStats(@Query() query: DailyStatsQuery) {
     const where: Record<string, unknown> = {};
     if (query.type) where.type = query.type;
@@ -190,7 +253,23 @@ export class NotificationController {
   }
 
   @Get('stats/stations')
-  @ApiOperation({ summary: 'Get pre-aggregated daily station stats' })
+  @ApiOperation({
+    summary: 'Get pre-aggregated daily station stats',
+    description: 'Returns per-station daily charging stats from the `station_daily_stats` table. Filter by stationId and date range.',
+  })
+  @ApiSuccessResponse(200, 'Station stats retrieved', [
+    {
+      id: 'uuid',
+      stationId: 'uuid',
+      stationName: 'Panda EV — Dongnasok',
+      date: '2026-06-16T00:00:00.000Z',
+      sessionsStarted: 8,
+      sessionsCompleted: 7,
+      totalEnergyWh: 142000,
+      totalRevenueLak: 384000,
+    },
+  ])
+  @ApiAuthErrors()
   async getStationStats(@Query() query: StationStatsQuery) {
     const where: Record<string, unknown> = {};
     if (query.stationId) where.stationId = query.stationId;

@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: panda-gateway-api
+  labels:
+    app: panda-gateway-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: panda-gateway-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: panda-gateway-api
+    spec:
+      serviceAccountName: panda-gateway-api-ksa
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        # ── NestJS Gateway API ───────────────────────────────────────────────
+        - name: panda-gateway-api
+          image: asia-southeast1-docker.pkg.dev/pandaev/panda-ev-repo/panda-gateway-api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 4004
+
+          envFrom:
+            - configMapRef:
+                name: panda-gateway-api-config
+
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-gateway-api-secrets
+                  key: DATABASE_URL
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: panda-gateway-api-secrets
+                  key: RABBITMQ_URL
+            # Service-to-service JWT (signing outgoing RabbitMQ messages)
+            - name: SERVICE_JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-gateway-api-secrets
+                  key: SERVICE_JWT_PRIVATE_KEY
+            - name: TRUSTED_SERVICE_PUBLIC_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: panda-gateway-api-secrets
+                  key: TRUSTED_SERVICE_PUBLIC_KEYS
+            # User JWT — gateway verifies mobile user access tokens
+            # Uses the mobile service's public key (RS256)
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-gateway-api-secrets
+                  key: MOBILE_PUBLIC_KEY
+            # BCEL OnePay — RSA private key for void/refund request signing.
+            - name: BCEL_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: panda-gateway-api-secrets
+                  key: BCEL_PRIVATE_KEY
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4004
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4004
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 4004
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "800m"
+              memory: "512Mi"
+
+        # ── Cloud SQL Auth Proxy Sidecar ─────────────────────────────────────
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--structured-logs"
+            - "--private-ip"
+            - "--health-check"
+            - "--http-address=0.0.0.0"
+            - "PROJECT:REGION:INSTANCE?port=5432"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+
+          startupProbe:
+            httpGet:
+              path: /startup
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

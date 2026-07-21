@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panda EV — Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #10B981;
+      --primary-dark: #059669;
+      --primary-light: #D1FAE5;
+      --sidebar-bg: #0F172A;
+      --sidebar-text: #94A3B8;
+      --page-bg: #F1F5F9;
+      --card-bg: #FFFFFF;
+      --text-primary: #0F172A;
+      --text-secondary: #64748B;
+      --border: #E2E8F0;
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --info: #3B82F6;
+      --shadow: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Noto Sans Lao', 'Inter', sans-serif;
+      background: var(--page-bg);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    .app { display: flex; height: 100vh; overflow: hidden; }
+
+    /* ===== SIDEBAR ===== */
+    .sidebar {
+      width: 220px;
+      min-width: 220px;
+      background: var(--sidebar-bg);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      z-index: 100;
+    }
+
+    .sidebar-logo {
+      padding: 18px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: var(--primary);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .logo-text { color: white; font-weight: 700; font-size: 14px; line-height: 1.2; }
+    .logo-sub  { color: var(--sidebar-text); font-size: 10px; }
+
+    .sidebar-sec { padding: 14px 10px 6px; }
+
+    .sec-label {
+      color: #475569;
+      font-size: 9.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0 6px;
+      margin-bottom: 4px;
+    }
+
+    .nav-item {
+      display: flex; align-items: center; gap: 9px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      color: var(--sidebar-text);
+      cursor: pointer;
+      font-size: 12.5px;
+      transition: all 0.15s;
+      margin-bottom: 1px;
+    }
+
+    .nav-item:hover { background: rgba(255,255,255,0.05); color: #E2E8F0; }
+    .nav-item.active { background: rgba(16,185,129,0.12); color: var(--primary); }
+
+    .nav-item .icon { width: 16px; text-align: center; font-size: 13px; }
+
+    .nav-badge {
+      margin-left: auto;
+      background: var(--danger);
+      color: white;
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 10px;
+      font-weight: 700;
+    }
+
+    .sidebar-user {
+      margin-top: auto;
+      padding: 10px;
+    }
+
+    .sidebar-user-inner {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+
+    /* ===== MAIN ===== */
+    .main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+    /* ===== TOPBAR ===== */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .topbar-title { font-size: 14px; font-weight: 700; margin-right: auto; }
+
+    .filter-label { font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; }
+
+    select.fs {
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--text-primary);
+      background: white;
+      outline: none;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    select.fs:focus { border-color: var(--primary); }
+
+    .btn-notif {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: white;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      position: relative;
+      color: var(--text-secondary);
+    }
+
+    .btn-notif .bdg {
+      position: absolute; top: -2px; right: -2px;
+      width: 14px; height: 14px;
+      background: var(--danger);
+      border-radius: 50%;
+      font-size: 8px;
+      color: white;
+      display: flex; align-items: center; justify-content: center;
+      border: 2px solid white;
+      font-weight: 700;
+    }
+
+    .user-av {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      background: var(--primary-light);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--primary-dark);
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    /* ===== CONTENT ===== */
+    .content { padding: 18px 20px; flex: 1; }
+
+    .sec-hd {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px; margin-top: 4px;
+    }
+
+    .sec-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .sec-title::before {
+      content: '';
+      width: 3px; height: 13px;
+      background: var(--primary);
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .sec-link { font-size: 11.5px; color: var(--primary); cursor: pointer; }
+
+    .live-label {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; color: var(--primary); font-weight: 500;
+    }
+
+    .live-dot {
+      width: 7px; height: 7px;
+      background: var(--primary);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* ===== KPI CARDS ===== */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .kpi-card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 14px 15px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--accent, var(--primary));
+    }
+
+    .kpi-icon {
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+      margin-bottom: 9px;
+      background: var(--accent-bg, var(--primary-light));
+      color: var(--accent, var(--primary));
+    }
+
+    .kpi-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; }
+
+    .kpi-value { font-size: 20px; font-weight: 800; color: var(--text-primary); line-height: 1.2; margin-bottom: 6px; }
+
+    .kpi-chg { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+    .kpi-chg.up   { color: #10B981; }
+    .kpi-chg.down { color: #EF4444; }
+    .kpi-chg.warn { color: #F59E0B; }
+
+    /* ===== CARDS ===== */
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .card-hd {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    .card-title { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+
+    /* ===== MIDDLE ROW ===== */
+    .middle-row {
+      display: grid;
+      grid-template-columns: 60fr 40fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    #map { height: 310px; }
+
+    .stat-mini-row {
+      display: flex; gap: 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .stat-mini {
+      flex: 1; text-align: center;
+      padding: 8px 4px;
+      border-right: 1px solid var(--border);
+    }
+
+    .stat-mini:last-child { border-right: none; }
+    .stat-mini-val { font-size: 16px; font-weight: 800; }
+    .stat-mini-lbl { font-size: 9.5px; color: var(--text-secondary); }
+
+    /* Station List */
+    .station-list { max-height: 185px; overflow-y: auto; }
+
+    .st-item {
+      display: flex; align-items: center; gap: 9px;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .st-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .st-info { flex: 1; min-width: 0; }
+
+    .st-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .st-meta { font-size: 10.5px; color: var(--text-secondary); }
+    .st-pct  { font-size: 13px; font-weight: 700; }
+
+    .util-bar-bg { width: 55px; height: 4px; background: var(--border); border-radius: 2px; margin-top: 3px; }
+    .util-bar    { height: 100%; border-radius: 2px; background: var(--primary); }
+
+    /* Alerts */
+    .alerts-sec { padding: 10px 12px; border-top: 1px solid var(--border); }
+    .alerts-ttl { font-size: 10.5px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 7px; }
+
+    .alert-item {
+      display: flex; align-items: flex-start; gap: 7px;
+      padding: 7px 9px;
+      border-radius: 7px;
+      margin-bottom: 5px;
+      font-size: 11.5px;
+      line-height: 1.45;
+    }
+
+    .alert-item.warn { background: #FEF3C7; color: #92400E; }
+    .alert-item.err  { background: #FEE2E2; color: #991B1B; }
+    .alert-item.info { background: #DBEAFE; color: #1E40AF; }
+    .alert-item .ai  { flex-shrink: 0; margin-top: 1px; }
+
+    /* ===== CHARTS ROW ===== */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1.5fr 1.5fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .chart-pad { padding: 14px; position: relative; }
+
+    /* Heatmap */
+    .hm-wrap { padding: 10px 14px 12px; overflow-x: auto; }
+    .hm-labels { display: flex; margin-left: 26px; margin-bottom: 3px; }
+    .hm-h { width: 19px; font-size: 8px; color: var(--text-secondary); text-align: center; flex-shrink: 0; }
+    .hm-row { display: flex; align-items: center; margin-bottom: 2px; }
+    .hm-day { width: 26px; font-size: 9px; color: var(--text-secondary); flex-shrink: 0; }
+    .hm-cell { width: 19px; height: 15px; border-radius: 2px; flex-shrink: 0; cursor: pointer; }
+    .hm-cell:hover { outline: 2px solid #0F172A; outline-offset: 1px; }
+
+    /* ===== EFFICIENCY ROW ===== */
+    .eff-row {
+      display: grid;
+      grid-template-columns: 1.4fr 1.4fr 2.2fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .pie-col { display: flex; flex-direction: column; gap: 12px; }
+
+    /* Gauge */
+    .gauge-wrap { position: relative; display: flex; justify-content: center; }
+    .gauge-center {
+      position: absolute;
+      text-align: center;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -10%);
+    }
+    .gauge-pct { font-size: 20px; font-weight: 800; line-height: 1; }
+    .gauge-sub { font-size: 9px; color: var(--text-secondary); }
+
+    /* Issues Table */
+    .iss-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+    .iss-table th {
+      padding: 7px 11px; text-align: left;
+      font-size: 10.5px; font-weight: 600;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+      background: #F8FAFC;
+    }
+    .iss-table td { padding: 8px 11px; border-bottom: 1px solid var(--border); }
+    .iss-table tr:last-child td { border-bottom: none; }
+    .iss-table tr:hover td { background: #F8FAFC; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-size: 10px; font-weight: 500;
+    }
+
+    .b-ok   { background: #D1FAE5; color: #065F46; }
+    .b-warn { background: #FEF3C7; color: #92400E; }
+    .b-err  { background: #FEE2E2; color: #991B1B; }
+    .b-blue { background: #DBEAFE; color: #1E40AF; }
+
+    /* ===== FORECAST ROW ===== */
+    .fc-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 2fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .fc-card {
+      background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+      color: white;
+      border-radius: var(--radius);
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .fc-card::before {
+      content: '';
+      position: absolute; top: -28px; right: -28px;
+      width: 90px; height: 90px;
+      background: rgba(16,185,129,0.1);
+      border-radius: 50%;
+    }
+
+    .fc-lbl  { font-size: 11px; color: rgba(255,255,255,0.55); margin-bottom: 5px; }
+    .fc-val  { font-size: 24px; font-weight: 800; margin-bottom: 3px; }
+    .fc-sub  { font-size: 10px; color: rgba(255,255,255,0.4); }
+    .fc-trend {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; color: #34D399; margin-top: 7px;
+    }
+
+    /* Legend dots */
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .legend-line {
+      display: inline-block;
+      width: 14px; height: 2px;
+      border-radius: 2px;
+      vertical-align: middle;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+
+    /* Tab buttons */
+    .tab-btn {
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      background: white;
+      font-family: inherit;
+      color: var(--text-secondary);
+    }
+    .tab-btn.active {
+      border-color: var(--primary);
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon"><i class="fas fa-bolt"></i></div>
+      <div>
+        <div class="logo-text">Panda EV</div>
+        <div class="logo-sub">Admin Dashboard</div>
+      </div>
+    </div>
+
+    <div class="sidebar-sec">
+      <div class="sec-label">ຫຼັກ</div>
+      <div class="nav-item active"><span class="icon"><i class="fas fa-table-columns"></i></span> Dashboard</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-map-location-dot"></i></span> ສະຖານີ</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-plug-circle-bolt"></i></span> ຫົວຊາດ <span class="nav-badge">2</span></div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-charging-station"></i></span> Session ການຊາດ</div>
+    </div>
+
+    <div class="sidebar-sec">
+      <div class="sec-label">ການເງິນ</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-wallet"></i></span> ກະເປົາ</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-receipt"></i></span> ໃບບິນ / Invoice</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-qrcode"></i></span> ການຊຳລະ BCEL</div>
+    </div>
+
+    <div class="sidebar-sec">
+      <div class="sec-label">ຈັດການ</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-users"></i></span> ຜູ້ໃຊ້ Mobile</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-tag"></i></span> Pricing Tier</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-bell"></i></span> ແຈ້ງເຕືອນ</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-shield-halved"></i></span> IAM / RBAC</div>
+      <div class="nav-item"><span class="icon"><i class="fas fa-gear"></i></span> ການຕັ້ງຄ່າ</div>
+    </div>
+
+    <div class="sidebar-user">
+      <div class="sidebar-user-inner">
+        <i class="fas fa-circle-user" style="color: var(--primary); font-size: 22px;"></i>
+        <div>
+          <div style="color: #E2E8F0; font-weight: 500; font-size: 11.5px;">Admin</div>
+          <div style="color: var(--sidebar-text); font-size: 10px;">admin@pandaev.com</div>
+        </div>
+        <i class="fas fa-right-from-bracket" style="color: var(--sidebar-text); font-size: 12px; margin-left: auto;"></i>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <div class="main">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-title">📊 Dashboard ພາບລວມ</div>
+
+      <span class="filter-label">ສະຖານີ:</span>
+      <select class="fs">
+        <option>ທັງໝົດ (6)</option>
+        <option>ສູນທະໄລ Mall</option>
+        <option>ສຸກສະຫວັນ Plaza</option>
+        <option>ຕາດຫລວງ Square</option>
+      </select>
+
+      <span class="filter-label">ຊ່ວງເວລາ:</span>
+      <select class="fs">
+        <option>ເດືອນນີ້</option>
+        <option>ມື້ນີ້</option>
+        <option>7 ວັນຜ່ານມາ</option>
+        <option>ກຳນົດເອງ</option>
+      </select>
+
+      <span class="filter-label">ປະເພດ:</span>
+      <select class="fs">
+        <option>ທັງໝົດ</option>
+        <option>DC Fast (GBT)</option>
+        <option>DC Fast (CCS2)</option>
+        <option>AC Slow</option>
+      </select>
+
+      <div style="display:flex; align-items:center; gap:8px; margin-left: 4px;">
+        <div class="btn-notif">
+          <i class="fas fa-bell" style="font-size:12px;"></i>
+          <div class="bdg">3</div>
+        </div>
+        <div class="user-av">A</div>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- ═══ ROW 1: KPI ═══ -->
+      <div class="sec-hd">
+        <div class="sec-title">ສຸບລວມສະຖານະການ</div>
+        <div class="live-label"><div class="live-dot"></div> ສົດໆ ณ 14:32</div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card" style="--accent:#10B981; --accent-bg:#D1FAE5;">
+          <div class="kpi-icon"><i class="fas fa-coins"></i></div>
+          <div class="kpi-label">ລາຍໄດ້ທັງໝົດ</div>
+          <div class="kpi-value">₭ 47.8M</div>
+          <div class="kpi-chg up"><i class="fas fa-arrow-trend-up"></i> +18.3% vs ເດືອນຜ່ານມາ</div>
+        </div>
+        <div class="kpi-card" style="--accent:#3B82F6; --accent-bg:#DBEAFE;">
+          <div class="kpi-icon" style="background:#DBEAFE; color:#3B82F6;"><i class="fas fa-bolt"></i></div>
+          <div class="kpi-label">ພະລັງງານທີ່ຂາຍ</div>
+          <div class="kpi-value">12,450 kWh</div>
+          <div class="kpi-chg up"><i class="fas fa-arrow-trend-up"></i> +22.1% vs ເດືອນຜ່ານມາ</div>
+        </div>
+        <div class="kpi-card" style="--accent:#8B5CF6; --accent-bg:#EDE9FE;">
+          <div class="kpi-icon" style="background:#EDE9FE; color:#8B5CF6;"><i class="fas fa-plug"></i></div>
+          <div class="kpi-label">ຈຳນວນ Session</div>
+          <div class="kpi-value">1,284 ຄັ້ງ</div>
+          <div class="kpi-chg up"><i class="fas fa-arrow-trend-up"></i> +9.7% vs ເດືອນຜ່ານມາ</div>
+        </div>
+        <div class="kpi-card" style="--accent:#F59E0B; --accent-bg:#FEF3C7;">
+          <div class="kpi-icon" style="background:#FEF3C7; color:#F59E0B;"><i class="fas fa-map-pin"></i></div>
+          <div class="kpi-label">ສະຖານະສະຖານີ</div>
+          <div class="kpi-value">18 <span style="font-size:13px; font-weight:500; color:var(--text-secondary);">/ 20</span></div>
+          <div class="kpi-chg warn"><i class="fas fa-circle-exclamation"></i> 2 ສະຖານີ Offline</div>
+        </div>
+        <div class="kpi-card" style="--accent:#EF4444; --accent-bg:#FEE2E2;">
+          <div class="kpi-icon" style="background:#FEE2E2; color:#EF4444;"><i class="fas fa-battery-three-quarters"></i></div>
+          <div class="kpi-label">ກຳລັງຊາດສະເລ່ຍ</div>
+          <div class="kpi-value">34.2 kW</div>
+          <div class="kpi-chg down"><i class="fas fa-arrow-trend-down"></i> -2.1% vs ເດືອນຜ່ານມາ</div>
+        </div>
+      </div>
+
+      <!-- ═══ ROW 2: LIVE OPERATIONS ═══ -->
+      <div class="sec-hd">
+        <div class="sec-title">ການດຳເນີນງານສົດ (Live Operations)</div>
+        <a class="sec-link">ເບິ່ງທັງໝົດ →</a>
+      </div>
+
+      <div class="middle-row">
+        <!-- Map -->
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-title"><i class="fas fa-map" style="color:var(--primary); margin-right:6px;"></i>ແຜນທີ່ສະຖານະສະຖານີ</div>
+            <div style="display:flex; gap:10px; font-size:11px; color:var(--text-secondary);">
+              <span><span class="legend-dot" style="background:#10B981;"></span> ຫວ່າງ</span>
+              <span><span class="legend-dot" style="background:#F59E0B;"></span> ຊາດຢູ່</span>
+              <span><span class="legend-dot" style="background:#EF4444;"></span> Offline</span>
+            </div>
+          </div>
+          <div id="map"></div>
+          <div class="stat-mini-row">
+            <div class="stat-mini">
+              <div class="stat-mini-val" style="color:#10B981;">12</div>
+              <div class="stat-mini-lbl">ຫວ່າງ</div>
+            </div>
+            <div class="stat-mini">
+              <div class="stat-mini-val" style="color:#F59E0B;">6</div>
+              <div class="stat-mini-lbl">ກຳລັງຊາດ</div>
+            </div>
+            <div class="stat-mini">
+              <div class="stat-mini-val" style="color:#EF4444;">2</div>
+              <div class="stat-mini-lbl">Offline</div>
+            </div>
+            <div class="stat-mini">
+              <div class="stat-mini-val">20</div>
+              <div class="stat-mini-lbl">ຫົວຊາດທັງໝົດ</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Station List + Alerts -->
+        <div class="card" style="display:flex; flex-direction:column;">
+          <div class="card-hd">
+            <div class="card-title"><i class="fas fa-list" style="color:var(--primary); margin-right:6px;"></i>ລາຍຊື່ສະຖານີ</div>
+            <span class="badge b-blue">6 ສະຖານີ</span>
+          </div>
+          <div class="station-list">
+            <div class="st-item">
+              <div class="st-dot" style="background:#F59E0B;"></div>
+              <div class="st-info">
+                <div class="st-name">ສູນທະໄລ Mall</div>
+                <div class="st-meta">4 ຫົວ · DC Fast · ຊາດ 3</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="st-pct" style="color:#F59E0B;">75%</div>
+                <div class="util-bar-bg"><div class="util-bar" style="width:75%; background:#F59E0B;"></div></div>
+              </div>
+            </div>
+            <div class="st-item">
+              <div class="st-dot" style="background:#10B981;"></div>
+              <div class="st-info">
+                <div class="st-name">ສຸກສະຫວັນ Plaza</div>
+                <div class="st-meta">6 ຫົວ · DC Fast · ຫວ່າງ 4</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="st-pct" style="color:#10B981;">33%</div>
+                <div class="util-bar-bg"><div class="util-bar" style="width:33%;"></div></div>
+              </div>
+            </div>
+            <div class="st-item">
+              <div class="st-dot" style="background:#10B981;"></div>
+              <div class="st-info">
+                <div class="st-name">ຕາດຫລວງ Square</div>
+                <div class="st-meta">4 ຫົວ · AC+DC · ຫວ່າງ 3</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="st-pct" style="color:#10B981;">25%</div>
+                <div class="util-bar-bg"><div class="util-bar" style="width:25%;"></div></div>
+              </div>
+            </div>
+            <div class="st-item">
+              <div class="st-dot" style="background:#F59E0B;"></div>
+              <div class="st-info">
+                <div class="st-name">ຄຳສຸກ Avenue</div>
+                <div class="st-meta">2 ຫົວ · DC Fast · Full!</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="st-pct" style="color:#EF4444;">100%</div>
+                <div class="util-bar-bg"><div class="util-bar" style="width:100%; background:#EF4444;"></div></div>
+              </div>
+            </div>
+            <div class="st-item">
+              <div class="st-dot" style="background:#EF4444;"></div>
+              <div class="st-info">
+                <div class="st-name">ທ່ານຫລວງ Shopping</div>
+                <div class="st-meta">3 ຫົວ · DC Fast · ❌ Offline</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="st-pct" style="color:#EF4444;">0%</div>
+                <div class="util-bar-bg"><div class="util-bar" style="width:0%;"></div></div>
+              </div>
+            </div>
+            <div class="st-item">
+              <div class="st-dot" style="background:#10B981;"></div>
+              <div class="st-info">
+                <div class="st-name">ທ່າແຂກ Express</div>
+                <div class="st-meta">2 ຫົວ · AC Slow · ຫວ່າງ 1</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="st-pct" style="color:#10B981;">50%</div>
+                <div class="util-bar-bg"><div class="util-bar" style="width:50%;"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alerts-sec" style="flex:1;">
+            <div class="alerts-ttl"><i class="fas fa-triangle-exclamation" style="margin-right:4px;"></i>ການແຈ້ງເຕືອນ</div>
+            <div class="alert-item err">
+              <div class="ai"><i class="fas fa-circle-xmark"></i></div>
+              <div><strong>ທ່ານຫລວງ Shopping</strong> — ຂາດການຕິດຕໍ່ 45 ນາທີ<br>
+              <span style="font-size:10.5px; opacity:0.75;">14:05 · Offline · ກຳລັງກວດສອບ</span></div>
+            </div>
+            <div class="alert-item warn">
+              <div class="ai"><i class="fas fa-fire"></i></div>
+              <div><strong>ຄຳສຸກ Avenue</strong> — ຫົວຊາດທັງໝົດ Full (100%)<br>
+              <span style="font-size:10.5px; opacity:0.75;">14:15 · ຜູ້ໃຊ້ລໍຖ້າ 2 ຄົນ</span></div>
+            </div>
+            <div class="alert-item info">
+              <div class="ai"><i class="fas fa-clock"></i></div>
+              <div><strong>ສູນທະໄລ Mall</strong> — ໃກ້ Peak Hour (17:00)<br>
+              <span style="font-size:10.5px; opacity:0.75;">ຄາດຈະ Full ໃນ ~30 ນາທີ</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ ROW 3: CHARTS ═══ -->
+      <div class="sec-hd">
+        <div class="sec-title">ວິເຄາະລາຍໄດ້ ແລະ ພະລັງງານ</div>
+        <div style="display:flex; gap:5px;">
+          <button class="tab-btn">ວັນ</button>
+          <button class="tab-btn active">ອາທິດ</button>
+          <button class="tab-btn">ເດືອນ</button>
+        </div>
+      </div>
+
+      <div class="charts-row">
+        <!-- Line Chart -->
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-title">ແນວໂນ້ມລາຍໄດ້ ແລະ kWh (ອາທິດນີ້)</div>
+            <div style="display:flex; gap:12px; font-size:11px; color:var(--text-secondary);">
+              <span><span class="legend-line" style="background:#10B981;"></span> ลາຍໄດ้ (₭M)</span>
+              <span><span class="legend-line" style="border-top:2px dashed #3B82F6; background:none;"></span> kWh (×100)</span>
+            </div>
+          </div>
+          <div class="chart-pad" style="height:230px;"><canvas id="lineChart"></canvas></div>
+        </div>
+
+        <!-- Bar Chart -->
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-title">Top 5 ສະຖານີ (ລາຍໄດ້)</div>
+          </div>
+          <div class="chart-pad" style="height:230px;"><canvas id="barChart"></canvas></div>
+        </div>
+
+        <!-- Heatmap -->
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-title">ຄວາມໜາແໜ້ນການໃຊ້ (Heatmap)</div>
+            <div style="display:flex; align-items:center; gap:4px; font-size:10px; color:var(--text-secondary);">
+              ໜ້ອຍ
+              <span style="display:flex; gap:2px; margin:0 3px;">
+                <span style="width:9px; height:9px; border-radius:2px; background:#D1FAE5; display:inline-block;"></span>
+                <span style="width:9px; height:9px; border-radius:2px; background:#6EE7B7; display:inline-block;"></span>
+                <span style="width:9px; height:9px; border-radius:2px; background:#10B981; display:inline-block;"></span>
+                <span style="width:9px; height:9px; border-radius:2px; background:#059669; display:inline-block;"></span>
+                <span style="width:9px; height:9px; border-radius:2px; background:#065F46; display:inline-block;"></span>
+              </span>
+              ຫຼາຍ
+            </div>
+          </div>
+          <div class="hm-wrap" id="heatmapWrap"></div>
+        </div>
+      </div>
+
+      <!-- ═══ ROW 4: EFFICIENCY ═══ -->
+      <div class="sec-hd">
+        <div class="sec-title">ປະສິດທິພາບ ແລະ ພຶດຕິກຳຜູ້ໃຊ້</div>
+      </div>
+
+      <div class="eff-row">
+        <!-- Pie Charts -->
+        <div class="pie-col">
+          <div class="card">
+            <div class="card-hd"><div class="card-title">ຜູ້ໃຊ້ໃໝ່ vs ເກົ່າ</div></div>
+            <div style="height:135px; padding:8px 10px;"><canvas id="userPie"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-hd"><div class="card-title">ປະເພດລົດ EV</div></div>
+            <div style="height:135px; padding:8px 10px;"><canvas id="vehiclePie"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Gauge + Radar -->
+        <div class="pie-col">
+          <div class="card">
+            <div class="card-hd"><div class="card-title">Utilization Rate</div></div>
+            <div style="height:135px; padding:6px 10px; position:relative;">
+              <canvas id="gaugeChart"></canvas>
+              <div class="gauge-center">
+                <div class="gauge-pct">68%</div>
+                <div class="gauge-sub">ສະເລ່ຍ</div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-hd"><div class="card-title">ປຽບທຽບສະຖານີ</div></div>
+            <div style="height:135px; padding:4px 8px;"><canvas id="radarChart"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Issues Table -->
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-title">⚠️ ຈຸດທີ່ຕ້ອງແກ້ໄຂ</div>
+            <span class="badge b-warn">5 ລາຍການ</span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="iss-table">
+              <thead>
+                <tr>
+                  <th>ສະຖານີ</th>
+                  <th>ຫົວຊາດ</th>
+                  <th>Downtime</th>
+                  <th>Session ລ້ມ</th>
+                  <th>ສະຖານະ</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>ທ່ານຫລວງ</strong></td>
+                  <td>Connector #1</td>
+                  <td>45 ນາທີ</td>
+                  <td>—</td>
+                  <td><span class="badge b-err"><i class="fas fa-circle" style="font-size:6px;"></i> Offline</span></td>
+                </tr>
+                <tr>
+                  <td><strong>ຄຳສຸກ Ave</strong></td>
+                  <td>Connector #2</td>
+                  <td>—</td>
+                  <td>2 ຄັ້ງ</td>
+                  <td><span class="badge b-warn"><i class="fas fa-circle" style="font-size:6px;"></i> Full</span></td>
+                </tr>
+                <tr>
+                  <td><strong>ສູນທະໄລ</strong></td>
+                  <td>Connector #3</td>
+                  <td>12 ນາທີ</td>
+                  <td>1 ຄັ້ງ</td>
+                  <td><span class="badge b-warn"><i class="fas fa-circle" style="font-size:6px;"></i> Busy</span></td>
+                </tr>
+                <tr>
+                  <td><strong>ທ່າແຂກ</strong></td>
+                  <td>Connector #1</td>
+                  <td>5 ນາທີ</td>
+                  <td>—</td>
+                  <td><span class="badge b-ok"><i class="fas fa-circle" style="font-size:6px;"></i> OK</span></td>
+                </tr>
+                <tr>
+                  <td><strong>ສຸກສະຫວັນ</strong></td>
+                  <td>Connector #4</td>
+                  <td>—</td>
+                  <td>3 ຄັ້ງ</td>
+                  <td><span class="badge b-warn"><i class="fas fa-circle" style="font-size:6px;"></i> Warning</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ ROW 5: FORECASTING ═══ -->
+      <div class="sec-hd">
+        <div class="sec-title">ການຄາດຄະເນ (AI Forecasting)</div>
+        <span class="badge b-blue">🤖 AI Powered · ຂໍ້ມູນ 6 ເດືອນ</span>
+      </div>
+
+      <div class="fc-row">
+        <div class="fc-card">
+          <div class="fc-lbl">📈 ລາຍໄດ້ທີ່ຄາດ (ເດືອນໜ້າ)</div>
+          <div class="fc-val">₭ 58.3M</div>
+          <div class="fc-sub">ອ້າງອີງຈາກ 6 ເດືອນຜ່ານມາ</div>
+          <div class="fc-trend"><i class="fas fa-arrow-trend-up"></i> +22% ຈາກເດືອນນີ້</div>
+        </div>
+
+        <div class="fc-card" style="background: linear-gradient(135deg, #1E1B4B 0%, #2E1065 100%);">
+          <div class="fc-lbl">🔮 Session ທີ່ຄາດ (ເດືອນໜ້າ)</div>
+          <div class="fc-val">1,560 ຄັ້ງ</div>
+          <div class="fc-sub">ຊ່ວງເທດສາກິນ: ຄາດ Peak ສູງ</div>
+          <div class="fc-trend"><i class="fas fa-arrow-trend-up"></i> +21.5% ຈາກເດືອນນີ້</div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd">
+            <div class="card-title">ຄາດຄະເນລາຍໄດ້ 8 ເດືອນ</div>
+            <div style="display:flex; gap:12px; font-size:11px; color:var(--text-secondary);">
+              <span><span class="legend-line" style="background:#10B981;"></span> ຕົວຈິງ</span>
+              <span><span class="legend-line" style="background:#94A3B8;"></span> ຄາດຄະເນ</span>
+            </div>
+          </div>
+          <div class="chart-pad" style="height:155px;"><canvas id="forecastChart"></canvas></div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// ══════════════════════════════════════
+//  MAP (Leaflet — Vientiane, Laos)
+// ══════════════════════════════════════
+const map = L.map('map', { zoomControl: true }).setView([17.975, 102.615], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+const stations = [
+  { name: 'ສູນທະໄລ Mall',       lat: 17.9848, lng: 102.6126, status: 'charging',  util: 75, connectors: 4, sessions: 3 },
+  { name: 'ສຸກສະຫວັນ Plaza',     lat: 17.9632, lng: 102.6341, status: 'available', util: 33, connectors: 6, sessions: 2 },
+  { name: 'ຕາດຫລວງ Square',      lat: 17.9762, lng: 102.6288, status: 'available', util: 25, connectors: 4, sessions: 1 },
+  { name: 'ຄຳສຸກ Avenue',        lat: 17.9978, lng: 102.6044, status: 'full',      util: 100, connectors: 2, sessions: 2 },
+  { name: 'ທ່ານຫລວງ Shopping',   lat: 17.9705, lng: 102.5981, status: 'offline',   util: 0,  connectors: 3, sessions: 0 },
+  { name: 'ທ່າແຂກ Express',      lat: 17.9553, lng: 102.6218, status: 'available', util: 50, connectors: 2, sessions: 1 },
+];
+
+const COLOR = { available: '#10B981', charging: '#F59E0B', full: '#EF4444', offline: '#EF4444' };
+const LABEL = { available: 'ຫວ່າງ', charging: 'ກຳລັງຊາດ', full: 'Full', offline: 'Offline' };
+
+stations.forEach(s => {
+  const c = COLOR[s.status];
+  const icon = L.divIcon({
+    html: `<div style="
+      background:${c}; color:white; border-radius:50%;
+      width:30px; height:30px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:13px; box-shadow:0 2px 8px rgba(0,0,0,0.35);
+      border:2.5px solid white;">⚡</div>`,
+    className: '', iconSize: [30,30], iconAnchor: [15,15],
+  });
+  L.marker([s.lat, s.lng], { icon }).addTo(map).bindPopup(`
+    <div style="font-family:'Noto Sans Lao',sans-serif; min-width:155px; font-size:12px;">
+      <strong style="font-size:13px;">${s.name}</strong><br>
+      <span style="color:${c};">● ${LABEL[s.status]}</span><br>
+      Utilization: <strong>${s.util}%</strong><br>
+      ຫົວຊາດ: ${s.connectors} · Session: ${s.sessions}
+    </div>
+  `);
+});
+
+// ══════════════════════════════════════
+//  LINE CHART
+// ══════════════════════════════════════
+new Chart(document.getElementById('lineChart'), {
+  type: 'line',
+  data: {
+    labels: ['ຈັນ', 'ອັງຄານ', 'ພຸດ', 'ພະຫັດ', 'ສຸກ', 'ເສົາ', 'ທິດ'],
+    datasets: [
+      {
+        label: 'ลາຍໄດ้ (₭M)',
+        data: [5.2, 6.8, 7.1, 8.4, 6.9, 7.8, 5.6],
+        borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.07)',
+        fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#10B981',
+      },
+      {
+        label: 'kWh (×100)',
+        data: [14, 18, 19, 23, 19, 22, 16],
+        borderColor: '#3B82F6', borderDash: [5,3], backgroundColor: 'transparent',
+        tension: 0.4, pointRadius: 4, pointBackgroundColor: '#3B82F6',
+        yAxisID: 'y2',
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+    scales: {
+      x:  { grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 } } },
+      y:  { grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 }, callback: v => '₭'+v+'M' } },
+      y2: { position: 'right', grid: { display: false }, ticks: { font: { size: 10 }, callback: v => v*100+' kWh' } },
+    }
+  }
+});
+
+// ══════════════════════════════════════
+//  BAR CHART (horizontal)
+// ══════════════════════════════════════
+new Chart(document.getElementById('barChart'), {
+  type: 'bar',
+  data: {
+    labels: ['ສູນທະໄລ', 'ສຸກສ.', 'ຕາດຫ.', 'ຄຳສຸກ', 'ທ່ານຫ.'],
+    datasets: [{
+      label: 'ລາຍໄດ້',
+      data: [14.2, 11.8, 9.6, 7.4, 4.8],
+      backgroundColor: ['#10B981','#3B82F6','#8B5CF6','#F59E0B','#EF4444'],
+      borderRadius: 6,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: c => '₭'+c.raw+'M' } }
+    },
+    scales: {
+      x: { grid: { color: '#F1F5F9' }, ticks: { font: { size: 11 }, callback: v => '₭'+v+'M' } },
+      y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+    }
+  }
+});
+
+// ══════════════════════════════════════
+//  HEATMAP (CSS)
+// ══════════════════════════════════════
+(function buildHeatmap() {
+  const days  = ['ຈ', 'ອ', 'ພ', 'ພຫ', 'ສ', 'ສ7', 'ທ'];
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+
+  const data = days.map((_, d) => hours.map(h => {
+    let v = Math.random() * 15;
+    if (h >= 7  && h <= 9)  v += 48 + Math.random() * 30;
+    if (h >= 12 && h <= 14) v += 38 + Math.random() * 25;
+    if (h >= 17 && h <= 20) v += 58 + Math.random() * 35;
+    if (d >= 5) v *= 1.3;
+    return Math.min(Math.round(v), 100);
+  }));
+
+  function heatColor(v) {
+    const c = ['#D1FAE5','#6EE7B7','#10B981','#059669','#065F46'];
+    return c[Math.min(Math.floor(v / 100 * (c.length - 1)), c.length - 1)];
+  }
+
+  const wrap = document.getElementById('heatmapWrap');
+
+  // Hour labels
+  const hlRow = document.createElement('div');
+  hlRow.className = 'hm-labels';
+  hours.forEach(h => {
+    const el = document.createElement('div');
+    el.className = 'hm-h';
+    el.textContent = h % 4 === 0 ? h : '';
+    hlRow.appendChild(el);
+  });
+  wrap.appendChild(hlRow);
+
+  days.forEach((day, d) => {
+    const row = document.createElement('div');
+    row.className = 'hm-row';
+    const dl = document.createElement('div');
+    dl.className = 'hm-day';
+    dl.textContent = day;
+    row.appendChild(dl);
+    hours.forEach(h => {
+      const cell = document.createElement('div');
+      cell.className = 'hm-cell';
+      cell.style.background = heatColor(data[d][h]);
+      cell.title = `${day} ${h}:00 — ${data[d][h]}% utilization`;
+      row.appendChild(cell);
+    });
+    wrap.appendChild(row);
+  });
+})();
+
+// ══════════════════════════════════════
+//  DONUT: Users
+// ══════════════════════════════════════
+new Chart(document.getElementById('userPie'), {
+  type: 'doughnut',
+  data: {
+    labels: ['ຜູ້ໃຊ້ໃໝ່ (27%)', 'ຜູ້ໃຊ້ເກົ່າ (73%)'],
+    datasets: [{
+      data: [342, 942],
+      backgroundColor: ['#3B82F6','#10B981'],
+      borderWidth: 0,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: '68%',
+    plugins: { legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 9, padding: 5 } } }
+  }
+});
+
+// ══════════════════════════════════════
+//  DONUT: Vehicles
+// ══════════════════════════════════════
+new Chart(document.getElementById('vehiclePie'), {
+  type: 'doughnut',
+  data: {
+    labels: ['BYD (38%)', 'Tesla (22%)', 'MG (18%)', 'Neta (12%)', 'ອື່ນໆ (10%)'],
+    datasets: [{
+      data: [38, 22, 18, 12, 10],
+      backgroundColor: ['#10B981','#3B82F6','#8B5CF6','#F59E0B','#94A3B8'],
+      borderWidth: 0,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: '68%',
+    plugins: { legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 9, padding: 5 } } }
+  }
+});
+
+// ══════════════════════════════════════
+//  GAUGE (semi-circle)
+// ══════════════════════════════════════
+new Chart(document.getElementById('gaugeChart'), {
+  type: 'doughnut',
+  data: {
+    datasets: [{
+      data: [68, 32],
+      backgroundColor: ['#10B981','#F1F5F9'],
+      borderWidth: 0,
+      circumference: 180,
+      rotation: 270,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: '72%',
+    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+  }
+});
+
+// ══════════════════════════════════════
+//  RADAR
+// ══════════════════════════════════════
+new Chart(document.getElementById('radarChart'), {
+  type: 'radar',
+  data: {
+    labels: ['ລາຍໄດ້', 'Util%', 'Session', 'Uptime', 'Rating'],
+    datasets: [
+      {
+        label: 'ສູນທະໄລ',
+        data: [90, 75, 85, 95, 88],
+        borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.1)',
+        pointRadius: 2,
+      },
+      {
+        label: 'ສຸກສ.',
+        data: [75, 60, 70, 100, 92],
+        borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.1)',
+        pointRadius: 2,
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, boxWidth: 8, padding: 5 } } },
+    scales: {
+      r: {
+        min: 0, max: 100,
+        ticks: { display: false, stepSize: 25 },
+        grid: { color: '#E2E8F0' },
+        pointLabels: { font: { size: 9.5 } }
+      }
+    }
+  }
+});
+
+// ══════════════════════════════════════
+//  FORECAST LINE
+// ══════════════════════════════════════
+new Chart(document.getElementById('forecastChart'), {
+  type: 'line',
+  data: {
+    labels: ['ມ.1', 'ມ.2', 'ມ.3', 'ມ.4', 'ມ.5', 'ມ.6', 'ມ.7 ⬡', 'ມ.8 ⬡'],
+    datasets: [
+      {
+        label: 'ຕົວຈິງ',
+        data: [32, 35, 39, 42, 45, 47.8, null, null],
+        borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.06)',
+        fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#10B981',
+      },
+      {
+        label: 'ຄາດຄະເນ',
+        data: [null, null, null, null, null, 47.8, 53.2, 58.3],
+        borderColor: '#94A3B8', borderDash: [6,3],
+        backgroundColor: 'rgba(148,163,184,0.06)',
+        fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#94A3B8',
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+    scales: {
+      x: { grid: { color: '#F1F5F9' }, ticks: { font: { size: 10.5 } } },
+      y: { grid: { color: '#F1F5F9' }, ticks: { font: { size: 10.5 }, callback: v => '₭'+v+'M' } }
+    }
+  }
+});
+</script>
+</body>
+</html>
