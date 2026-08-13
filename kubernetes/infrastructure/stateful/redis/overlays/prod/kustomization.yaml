@@ -1,5 +1,0 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-# Redis ໃນ Production ໃຊ້ GCP Cloud Memorystore (private IP: 10.231.221.4)
-# ບໍ່ມີ K8s resources ທີ່ຕ້ອງ deploy — kustomize ຈະ apply ອອກ 0 resources

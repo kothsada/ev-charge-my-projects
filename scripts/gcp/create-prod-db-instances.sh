@@ -5,6 +5,13 @@
 # Edition: ENTERPRISE (Supports Custom Tiers)
 # Region: asia-southeast1 (Singapore)
 # Network: projects/pandaev/global/networks/panda-ev-vpc
+#
+# ອັບເດດ 2026-08-06: tier/availability ຂ້າງລຸ່ມນີ້ຖືກແກ້ໃຫ້ຕົງກັບ live prod ຈິງ
+# (ກວດຢືນຢັນຜ່ານ `gcloud sql instances describe`) — ຄ່າເກົ່າໃນ script ນີ້ບໍ່ຕົງກັບ
+# ສິ່ງທີ່ຖືກ apply ຈິງ (system-db/core-db ຖືກ resize ຂຶ້ນ, mobile-db/ocpp-db
+# ຍັງບໍ່ໄດ້ upgrade ເປັນ REGIONAL — ອ້າງອີງ docs/2026-08-06/...Cloud_SQL_Backup_And_HA
+# ຫຼື memory `project_cloud_sql_backup_ha`: ການ upgrade mobile/ocpp ເປັນ REGIONAL
+# ຍັງເປັນ optional/ຄ້າງ, ບໍ່ແມ່ນ script ຜິດພາດ)
 # ==============================================================================
 
 PROJECT_ID="pandaev"
@@ -21,7 +28,7 @@ echo "Creating: panda-ev-instance-system-db-a2..."
 gcloud sql instances create panda-ev-instance-system-db-a2 \
     --database-version=$DB_VERSION \
     --region=$REGION \
-    --tier=db-custom-1-3840 \
+    --tier=db-custom-2-8192 \
     --edition=ENTERPRISE \
     --availability-type=REGIONAL \
     --storage-auto-increase \
@@ -31,13 +38,16 @@ gcloud sql instances create panda-ev-instance-system-db-a2 \
     --async
 
 # 2. Mobile API (Master)
+# ⚠️ live prod ປັດຈຸບັນ = ZONAL (ບໍ່ແມ່ນ REGIONAL) — ບັນທຶກໄວ້ໃນ project_cloud_sql_backup_ha
+# ວ່າການ upgrade ເປັນ REGIONAL ຍັງເປັນ optional/ຄ້າງ. ປ່ຽນເປັນ REGIONAL ຂ້າງລຸ່ມນີ້ໄດ້
+# ຖ້າຢາກ deploy ໃໝ່ໃຫ້ HA ດີກວ່າ prod ປັດຈຸບັນ.
 echo "Creating: panda-ev-instance-mobile-db-a2..."
 gcloud sql instances create panda-ev-instance-mobile-db-a2 \
     --database-version=$DB_VERSION \
     --region=$REGION \
     --tier=db-custom-2-8192 \
     --edition=ENTERPRISE \
-    --availability-type=REGIONAL \
+    --availability-type=ZONAL \
     --storage-auto-increase \
     --no-assign-ip \
     --network=$VPC_NETWORK \
@@ -45,13 +55,14 @@ gcloud sql instances create panda-ev-instance-mobile-db-a2 \
     --async
 
 # 3. OCPP (Master)
+# ⚠️ live prod ປັດຈຸບັນ = ZONAL (ຄືເຫດຜົນດຽວກັນກັບ mobile-db ຂ້າງເທິງ)
 echo "Creating: panda-ev-instance-ocpp-db-a2..."
 gcloud sql instances create panda-ev-instance-ocpp-db-a2 \
     --database-version=$DB_VERSION \
     --region=$REGION \
     --tier=db-custom-2-8192 \
     --edition=ENTERPRISE \
-    --availability-type=REGIONAL \
+    --availability-type=ZONAL \
     --storage-auto-increase \
     --no-assign-ip \
     --network=$VPC_NETWORK \
@@ -63,7 +74,7 @@ echo "Creating: panda-ev-instance-core-db-a2..."
 gcloud sql instances create panda-ev-instance-core-db-a2 \
     --database-version=$DB_VERSION \
     --region=$REGION \
-    --tier=db-custom-1-3840 \
+    --tier=db-custom-2-8192 \
     --edition=ENTERPRISE \
     --availability-type=REGIONAL \
     --storage-auto-increase \

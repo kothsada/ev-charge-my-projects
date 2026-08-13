@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources: []
+
+# RabbitMQ ໃນ Production ໃຊ້ Helm Chart (bitnami/rabbitmq) — ຈັດການຢູ່ນອກ kustomize
+# StatefulSet "panda-rabbitmq" ໃນ panda-ev-prod ຖືກ deploy ດ້ວຍ:
+#   helm upgrade --install panda-rabbitmq bitnami/rabbitmq \
+#     -n panda-ev-prod -f scripts/rabbitmq-values.yaml
+# kustomize ຈະ apply ອອກ 0 resources ສຳລັບ production

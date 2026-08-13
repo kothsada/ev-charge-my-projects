@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - serviceaccount.yaml
+  - backendconfig.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: panda-notification-api-config
+    literals:
+      - PORT="4003"
+      - RABBITMQ_NOTIFICATIONS_QUEUE="PANDA_EV_NOTIFICATIONS"
+      - RABBITMQ_NOTIFICATIONS_DLQ="PANDA_EV_NOTIFICATIONS_DLQ"
+      - RABBITMQ_NOTIFICATIONS_DLX="PANDA_EV_NOTIFICATIONS_DLX"
+      - RABBITMQ_OCPP_EVENTS_QUEUE="PANDA_EV_QUEUE"
+      - RABBITMQ_SMS_QUEUE="PANDA_EV_SMS"
+      - RABBITMQ_SMS_DLQ="PANDA_EV_SMS_DLQ"
+      - RABBITMQ_SMS_DLX="PANDA_EV_SMS_DLX"
+      - LTC_SMS_BASE_URL="https://apicenter.laotel.com:9443/api/sms_center"
+      - LTC_SMS_HEADER="PANDAEV"
+      - LTC_SMS_PARTNER_ID="PEV"
+      - LTC_ONNET_OPERATOR_PREFIXES="205"
+      - SERVICE_NAME="notification-api"
+      - ALLOWED_ORIGINS="*"
