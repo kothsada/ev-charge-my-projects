@@ -1,0 +1,9 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: panda-ocpp-api-pdb
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: panda-ocpp-api

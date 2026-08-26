@@ -177,9 +177,9 @@ ok "Logged in — token: ${ACCESS_TOKEN:0:30}…"
 AUTH="Authorization: Bearer $ACCESS_TOKEN"
 
 # =============================================================================
-# PHASE 4 — WALLET TOP-UP
+# PHASE 4 — Add Credit
 # =============================================================================
-hdr "PHASE 4 — WALLET TOP-UP"
+hdr "PHASE 4 — Add Credit"
 
 info "Topping up wallet with ${TEST_TOPUP} LAK …"
 TOPUP_RESP=$(curl -sf -X POST "$MOBILE_URL/wallet/topup" \

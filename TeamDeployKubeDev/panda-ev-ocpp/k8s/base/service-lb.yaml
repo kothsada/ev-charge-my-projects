@@ -1,0 +1,51 @@
+# ==============================================================================
+# Panda EV — OCPP External LoadBalancer (L4 TCP)
+# Purpose : Expose OCPP WebSocket to charger boxes on the internet
+# Namespace: panda-ev
+# ==============================================================================
+#
+# PRE-REQUISITES:
+#   1. Reserve a static regional IP (for stable DNS):
+#      gcloud compute addresses create panda-ocpp-ip \
+#        --region=asia-southeast1 --project=pandaev
+#      # Then set loadBalancerIP below with the allocated address.
+#
+#   2. Port 443 (WSS) requires TLS cert/key in the OCPP deployment.
+#      See deployment.yaml PRE-REQUISITES — "panda-ocpp-tls-secrets".
+#      Omit the ocpp-wss port entry below if using plain ws:// only.
+#
+# NOTE: sessionAffinity: ClientIP is CRITICAL — each charger maintains a
+#       persistent WebSocket connection. Without sticky sessions, a charger
+#       that reconnects may land on a different pod, losing in-memory state.
+#       This is a no-op at replicas: 1 but ensures correct behaviour when
+#       horizontal scaling is enabled later.
+# ==============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: panda-ocpp-external-service
+  
+  annotations:
+    # GKE External L4 TCP passthrough — preserves source IP, supports long-lived WS
+    networking.gke.io/load-balancer-type: "External"
+spec:
+  type: LoadBalancer
+  # TODO: set to the reserved static IP from PRE-REQUISITES step 1
+  # loadBalancerIP: "x.x.x.x"
+  selector:
+    app: panda-ocpp-api
+  # Sticky sessions — route the same client IP to the same pod.
+  # Required for OCPP WebSocket per-charger connection state.
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 h — covers typical charger session duration
+  ports:
+    - name: ocpp-ws
+      protocol: TCP
+      port: 80          # Plain WebSocket  — ws://<host>/ocpp/<identity>
+      targetPort: 4002
+    - name: ocpp-wss
+      protocol: TCP
+      port: 443         # TLS WebSocket    — wss://<host>/ocpp/<identity>
+      targetPort: 4002  # App terminates TLS; requires panda-ocpp-tls-secrets (see above)
