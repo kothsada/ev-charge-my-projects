@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)",
+      "Bash(npx prisma:*)",
+      "Bash(grep -r \"@Post\\\\|@Get\\\\|@Controller\\\\|@Put\\\\|@Patch\\\\|@Delete\" /Users/tohatcode/Development/customers/pandaEV/panda-ev-client-mobile/src/modules/auth/auth.controller.ts 2>/dev/null | head -20\ngrep -r \"@Post\\\\|@Get\\\\|@Controller\" /Users/tohatcode/Development/customers/pandaEV/panda-ev-client-mobile/src/modules/wallet/wallet.controller.ts 2>/dev/null | head -15\ngrep -r \"@Post\\\\|@Get\\\\|@Controller\" /Users/tohatcode/Development/customers/pandaEV/panda-ev-client-mobile/src/modules/charging-session/charging-session.controller.ts 2>/dev/null | head -20)",
+      "Bash(redis-cli ping:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker exec:*)",
+      "Bash(redis-cli:*)",
+      "Bash(psql:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(python3:*)",
+      "Bash(cp:*)",
+      "Bash(npx jest:*)",
+      "Bash(npm test:*)",
+      "Bash(mv \"CHARGING_FLOW_TEST_2026-03-24.md\" \"2026-03-24/2026-03-24T13:05:38-CHARGING_FLOW_TEST.md\")",
+      "Bash(mv \"CSMS_System_Documentation_and_Audit.md\" \"2026-03-24/2026-03-24T01:33:33-CSMS_System_Documentation_and_Audit.md\")",
+      "Bash(mv \"DOC_PRESENTATION_LAO.md\" \"2026-03-20/2026-03-20T11:05:37-DOC_PRESENTATION_LAO.md\")",
+      "Bash(mv \"Data_Sync_Strategy_and_Implementation.md\" \"2026-03-24/2026-03-24T02:46:01-Data_Sync_Strategy_and_Implementation.md\")",
+      "Bash(mv \"E2E_Notification_Flow_Tests_2026-03-28_1703.md\" \"2026-03-28/2026-03-28T17:04:05-E2E_Notification_Flow_Tests.md\")",
+      "Bash(ls -la /Users/tohatcode/Development/customers/pandaEV/ocpp-virtual-charge-point/admin*)",
+      "Bash(find /Users/tohatcode/Development/customers/pandaEV/panda-ev-notification -name *.prisma -o -name schema.prisma)",
+      "Bash(xargs ls *)",
+      "Bash(kubectl logs *)",
+      "Bash(kubectl get *)",
+      "Bash(kubectl describe *)",
+      "Bash(node *)",
+      "Bash(wait)",
+      "Bash(toxiproxy-cli toxic *)",
+      "Bash(WS_URL=ws://localhost:3001/ocpp CP_ID=PANDA-PHONSAY-01 npm start index_16.ts)",
+      "Read(//tmp/**)",
+      "Bash(kubectl exec *)"
+    ]
+  }
+}
