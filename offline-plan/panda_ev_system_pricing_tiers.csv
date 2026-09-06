@@ -1,0 +1,17 @@
+id,name,type,description,rate_per_kwh,rate_per_min,free_minutes,min_charge,plug_type,enable_unplug_fee,unplug_fee_amount,enable_parking_fee,parking_fee_per_minute,parking_free_minutes,start_time,end_time,days_of_week,is_active,valid_from,valid_to,created_at,updated_at,created_by_id,updated_by_id,vat_pct,enable_charging_parking_fee,charging_parking_fee_per_minute,force_stop_at_end_time,min_charging_minutes_before_unplug_fee,deleted_at
+46c88f9e-3c7b-4fde-92e5-c8d7a11069dc,"Panda EV New Standard (2,699) — CCS2",PER_KWH,"🎉 ໂປຣໂມຊັນຕ້ອນຮັບບຸນເຂົ້າພັນສາ Panda EV ຈັດໃຫ້! 🐼⚡
+💸 ລາຄາພຽງແຕ່ 2,699 ກີບ / ກິໂລວັດ (kWh) ເທົ່ານັ້ນ! 
+❌ ຟຣີ! ຄ່າເລນຈອດລົດ
+❌ ຟຣີ! ຄ່າບໍລິການຫົວສາກ
+(ລາຄານີ້ແມ່ນຍັງບໍ່ລວມ VAT 10%)
+🚗🔌 ໃກ້ບ່ອນໃດ ແວ່ມາເຕີມພະລັງງານໃຫ້ລົດ EV ຂອງທ່ານໄດ້ເລີຍເຈົ້າ!
+💡 ເຄັດລັບເພີ່ມເຕີມຈາກນ້ອງແພນດ້າ (🐼 EV Panda Tips):
+- ເມື່ອແບັດເຕີຣີເຕັມ 100% ແລ້ວ ລະບົບຈະຢຸດຄິດໄລ່ໄຟ ແຕ່ລູກຄ້າຕ້ອງແວ່ມາຍ້າຍລົດເພາະຫາກຈອດເກີນ 10ນາທີ ລະບົບຈະຍັງຄິດຄ່າຈອດລົດທັນທີ",2699,,,0,CCS2,true,0,true,1000,10,,,{},true,2026-06-19 07:00:00+07,2026-10-27 07:00:00+07,2026-06-19 15:07:51.518+07,2026-07-03 00:32:30.565487+07,0de7ad8c-9f05-41bf-a1f4-0de4d164e7b5,0de7ad8c-9f05-41bf-a1f4-0de4d164e7b5,10,true,0,true,,
+86f27c69-d7c0-490d-8549-3eb9f57764d0,"Panda EV New Standard (2,699) — GB/T",PER_KWH,"🎉 ໂປຣໂມຊັນຕ້ອນຮັບບຸນເຂົ້າພັນສາ Panda EV ຈັດໃຫ້! 🐼⚡
+💸 ລາຄາພຽງແຕ່ 2,699 ກີບ / ກິໂລວັດ (kWh) ເທົ່ານັ້ນ! 
+❌ ຟຣີ! ຄ່າເລນຈອດລົດ
+❌ ຟຣີ! ຄ່າບໍລິການຫົວສາກ
+(ລາຄານີ້ແມ່ນຍັງບໍ່ລວມ VAT 10%)
+🚗🔌 ໃກ້ບ່ອນໃດ ແວ່ມາເຕີມພະລັງງານໃຫ້ລົດ EV ຂອງທ່ານໄດ້ເລີຍເຈົ້າ!
+💡 ເຄັດລັບເພີ່ມເຕີມຈາກນ້ອງແພນດ້າ (🐼 EV Panda Tips):
+- ເມື່ອແບັດເຕີຣີເຕັມ 100% ແລ້ວ ລະບົບຈະຢຸດຄິດໄລ່ໄຟ ແຕ່ລູກຄ້າຕ້ອງແວ່ມາຍ້າຍລົດເພາະຫາກຈອດເກີນ 10ນາທີ ລະບົບຈະຍັງຄິດຄ່າຈອດລົດທັນທີ",2699,,,0,GBT,true,0,true,1000,10,,,{},true,2026-06-19 07:00:00+07,2026-10-27 07:00:00+07,2026-06-19 15:03:20.824+07,2026-07-03 00:32:30.565487+07,0de7ad8c-9f05-41bf-a1f4-0de4d164e7b5,0de7ad8c-9f05-41bf-a1f4-0de4d164e7b5,10,true,0,true,0,
