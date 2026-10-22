@@ -88,3 +88,7 @@ pids/
 
 # ─── Runtime ─────────────────────────────────────────────────────────────────
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Claude / Gemini local instructions (not for GitHub)
+CLAUDE.md
+GEMINI.md
